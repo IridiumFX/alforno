@@ -1,0 +1,19 @@
+; Platform base config — uses variable substitution and label-ref links
+
+@platform {
+    name: "my-platform",
+    version: "{version}",
+    region: "{region}"
+}
+
+@network {
+    ingress: "api.{region}.example.com",
+    port: 443,
+    tls: tls
+}
+
+@services {
+    replicas: 4,
+    image: "platform:{version}",
+    database: database
+}

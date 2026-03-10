@@ -1,0 +1,41 @@
+; Layer 1: org-wide defaults — lowest precedence
+
+@app {
+    log_format: "json",
+    log_level: "info",
+    debug: false,
+    timeout_ms: 30000,
+    max_connections: 100
+}
+
+@db {
+    engine: "postgres",
+    port: 5432,
+    pool_min: 2,
+    pool_max: 10,
+    timeout_ms: 5000,
+    ssl: true
+}
+
+@cache {
+    engine: "redis",
+    port: 6379,
+    ttl_seconds: 300,
+    max_entries: 10000
+}
+
+@observability {
+    metrics_enabled: true,
+    tracing_enabled: false,
+    metrics_port: 9090,
+    scrape_interval_s: 15,
+    log_sampling_rate: 1.0
+}
+
+@security {
+    tls_enabled: true,
+    tls_min_version: "TLSv1.2",
+    auth_required: true,
+    token_ttl_s: 3600,
+    rate_limit_rps: 100
+}

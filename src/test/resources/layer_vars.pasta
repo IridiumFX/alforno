@@ -1,0 +1,10 @@
+; Deployment variables — resolved in Pass 1 before any merging
+
+@vars {
+    cluster: "prod-k8s",
+    region: "eu-west-1",
+    env: "prod",
+    service_name: "api_service",
+    version: "4.2.1",
+    registry: "registry.prod-k8s.internal"
+}

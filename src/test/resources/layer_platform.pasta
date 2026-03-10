@@ -1,0 +1,29 @@
+; Layer 2: platform/cluster settings
+
+@app {
+    registry: "registry.{cluster}.internal",
+    image: "{registry}/services/{service_name}:{version}",
+    pull_policy: "IfNotPresent",
+    namespace: "{cluster}-services"
+}
+
+@db {
+    host: "db.{cluster}.internal",
+    name: "{service_name}_{env}"
+}
+
+@cache {
+    host: "redis.{cluster}.internal"
+}
+
+@observability {
+    tracing_enabled: true,
+    tracing_endpoint: "http://jaeger.{cluster}.internal:14268/api/traces",
+    metrics_path: "/metrics"
+}
+
+@security {
+    tls_cert: "/etc/certs/{cluster}/tls.crt",
+    tls_key: "/etc/certs/{cluster}/tls.key",
+    issuer: "https://auth.{cluster}.internal"
+}

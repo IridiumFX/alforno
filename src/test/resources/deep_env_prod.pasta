@@ -1,0 +1,29 @@
+; Layer 3: production environment
+
+@app {
+    log_level: "warn",
+    max_connections: 1000
+}
+
+@db {
+    ssl: true,
+    pool_min: 5,
+    pool_max: 100
+}
+
+@cache {
+    enabled: true,
+    ttl: 300,
+    max_size: 4096
+}
+
+@tls {
+    enabled: true,
+    cert: "/etc/ssl/certs/{env}.pem",
+    key: "/etc/ssl/private/{env}.key"
+}
+
+@observability {
+    tracing_enabled: true,
+    sample_rate: 0.01
+}

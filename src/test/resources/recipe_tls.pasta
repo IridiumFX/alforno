@@ -1,0 +1,9 @@
+; Recipe for TLS config
+
+@tls {
+    consumes: ["tls"],
+    cert: "required",
+    key: "required",
+    protocols: "required",
+    verify: "required"
+}

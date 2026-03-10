@@ -1,0 +1,17 @@
+; Layer 2: team-level overrides
+
+@app {
+    name: "auth-service",
+    workers: 4,
+    timeout: 45
+}
+
+@db {
+    pool_min: 2,
+    pool_max: 10
+}
+
+@observability {
+    metrics_enabled: true,
+    log_format: "json"
+}

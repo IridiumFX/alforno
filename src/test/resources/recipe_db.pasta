@@ -1,0 +1,12 @@
+; Recipe for database config
+
+@database {
+    consumes: ["database"],
+    engine: "required",
+    host: "required",
+    name: "required",
+    port: "required",
+    pool_min: "required",
+    pool_max: "required",
+    timeout: "required"
+}

@@ -1,0 +1,26 @@
+; Recipe for linked platform — app embeds tls and observability
+
+@app {
+    consumes: ["app"],
+    name: "required",
+    port: "required",
+    workers: "required",
+    log_level: "required",
+    debug: "required",
+    timeout: "required",
+    max_connections: "required",
+    tls: "required",
+    telemetry: "required"
+}
+
+@db {
+    consumes: ["db"],
+    engine: "required",
+    host: "required",
+    name: "required",
+    port: "required",
+    pool_min: "required",
+    pool_max: "required",
+    ssl: "required",
+    timeout: "required"
+}

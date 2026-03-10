@@ -1,0 +1,7 @@
+; Production variables
+
+@vars {
+    region: "eu-west",
+    env: "prod",
+    version: "3.0.0"
+}

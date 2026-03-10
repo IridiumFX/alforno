@@ -1,0 +1,7 @@
+; Variable definitions — applied across all layers
+
+@vars {
+    region: "eu-west",
+    env: "prod",
+    service: "auth"
+}

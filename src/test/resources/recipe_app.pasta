@@ -1,0 +1,19 @@
+; Recipe for the layering case study
+
+@app {
+    consumes: ["app"],
+    port: "required",
+    workers: "required",
+    log_level: "required",
+    debug: "required"
+}
+
+@db {
+    consumes: ["db"],
+    engine: "required",
+    host: "required",
+    name: "required",
+    port: "required",
+    pool_min: "required",
+    pool_max: "required"
+}

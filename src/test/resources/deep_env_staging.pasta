@@ -1,0 +1,21 @@
+; Layer 3: staging environment
+
+@app {
+    debug: true,
+    log_level: "debug",
+    max_connections: 50
+}
+
+@db {
+    ssl: true,
+    pool_max: 20
+}
+
+@cache {
+    enabled: true,
+    ttl: 30
+}
+
+@tls {
+    enabled: true
+}

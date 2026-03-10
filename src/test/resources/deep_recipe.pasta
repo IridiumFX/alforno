@@ -1,0 +1,51 @@
+; Final conflate recipe — declares the guaranteed output shape
+
+@app {
+    consumes: ["app"],
+    name: "required",
+    port: "required",
+    workers: "required",
+    log_level: "required",
+    debug: "required",
+    timeout: "required",
+    max_connections: "required"
+}
+
+@db {
+    consumes: ["db"],
+    engine: "required",
+    host: "required",
+    name: "required",
+    port: "required",
+    pool_min: "required",
+    pool_max: "required",
+    ssl: "required",
+    timeout: "required"
+}
+
+@cache {
+    consumes: ["cache"],
+    enabled: "required",
+    ttl: "required",
+    max_size: "required",
+    host: "optional"
+}
+
+@tls {
+    consumes: ["tls"],
+    enabled: "required",
+    cert: "required",
+    key: "required",
+    protocols: "required",
+    verify: "required"
+}
+
+@observability {
+    consumes: ["observability"],
+    metrics_enabled: "required",
+    tracing_enabled: "required",
+    log_format: "required",
+    sample_rate: "required",
+    metrics_endpoint: "optional",
+    tracing_endpoint: "optional"
+}

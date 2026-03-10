@@ -1,0 +1,72 @@
+; Recipe for the 5-layer deploy conflate
+
+@app {
+    consumes: ["app"],
+    log_format: "declared",
+    log_level: "declared",
+    debug: "declared",
+    timeout_ms: "declared",
+    max_connections: "declared",
+    replicas: "declared",
+    registry: "declared",
+    image: "declared",
+    pull_policy: "declared",
+    namespace: "declared",
+    port: "declared",
+    health_path: "declared",
+    ready_path: "declared",
+    routes: "declared",
+    data_residency: "declared",
+    gdpr_mode: "declared"
+}
+
+@db {
+    consumes: ["db"],
+    engine: "declared",
+    host: "declared",
+    port: "declared",
+    name: "declared",
+    pool_min: "declared",
+    pool_max: "declared",
+    timeout_ms: "declared",
+    ssl: "declared",
+    read_replica: "declared",
+    backup_region: "declared"
+}
+
+@cache {
+    consumes: ["cache"],
+    engine: "declared",
+    host: "declared",
+    port: "declared",
+    ttl_seconds: "declared",
+    max_entries: "declared",
+    key_prefix: "declared"
+}
+
+@observability {
+    consumes: ["observability"],
+    metrics_enabled: "declared",
+    tracing_enabled: "declared",
+    metrics_port: "declared",
+    scrape_interval_s: "declared",
+    log_sampling_rate: "declared",
+    alert_threshold_ms: "declared",
+    metrics_endpoint: "declared",
+    tracing_endpoint: "declared",
+    metrics_path: "declared"
+}
+
+@security {
+    consumes: ["security"],
+    tls_enabled: "declared",
+    tls_min_version: "declared",
+    tls_cert: "declared",
+    tls_key: "declared",
+    auth_required: "declared",
+    token_ttl_s: "declared",
+    rate_limit_rps: "declared",
+    audit_log: "declared",
+    data_classification: "declared",
+    issuer: "declared"
+}

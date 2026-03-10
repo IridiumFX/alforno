@@ -1,0 +1,17 @@
+; Layer 5: service-specific settings — highest precedence
+
+@app {
+    port: 8080,
+    health_path: "/healthz",
+    ready_path: "/readyz",
+    routes: ["/api/v1", "/api/v2"]
+}
+
+@db {
+    name: "api_service_prod"
+}
+
+@cache {
+    ttl_seconds: 60,
+    key_prefix: "api:"
+}

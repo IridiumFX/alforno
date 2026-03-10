@@ -1,0 +1,27 @@
+; Layer 4: EU region specifics
+
+@app {
+    data_residency: "EU",
+    gdpr_mode: true
+}
+
+@db {
+    host: "db.{region}.prod.internal",
+    read_replica: "db-ro.{region}.prod.internal",
+    backup_region: "eu-central-1"
+}
+
+@cache {
+    host: "redis.{region}.prod.internal"
+}
+
+@observability {
+    metrics_endpoint: "https://prometheus.{region}.prod.internal",
+    tracing_endpoint: "http://jaeger.{region}.prod.internal:14268/api/traces"
+}
+
+@security {
+    tls_cert: "/etc/certs/{region}/tls.crt",
+    tls_key: "/etc/certs/{region}/tls.key",
+    data_classification: "EU-restricted"
+}

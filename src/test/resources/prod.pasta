@@ -1,0 +1,12 @@
+; Production overrides
+
+@app {
+    workers: 16,
+    log_level: "warn"
+}
+
+@db {
+    host: "db.{region}.internal",
+    name: "myapp_prod",
+    pool_max: 50
+}

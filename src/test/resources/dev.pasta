@@ -1,0 +1,11 @@
+; Development overrides
+
+@app {
+    debug: true,
+    log_level: "debug"
+}
+
+@db {
+    host: "localhost",
+    name: "myapp_dev"
+}

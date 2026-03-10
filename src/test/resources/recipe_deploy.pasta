@@ -1,0 +1,22 @@
+; Recipe for the cascading case study final stage
+
+@platform {
+    consumes: ["platform"],
+    name: "required",
+    version: "required",
+    region: "required"
+}
+
+@network {
+    consumes: ["network"],
+    ingress: "required",
+    port: "required",
+    tls: "required"
+}
+
+@services {
+    consumes: ["services"],
+    replicas: "required",
+    image: "required",
+    database: "required"
+}

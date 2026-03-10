@@ -1,0 +1,25 @@
+; Layer 4: regional overrides (eu-west)
+
+@app {
+    workers: 8
+}
+
+@db {
+    host: "db-primary.{region}.internal",
+    name: "{service}_prod",
+    pool_max: 150
+}
+
+@cache {
+    host: "redis.{region}.internal"
+}
+
+@tls {
+    cert: "/etc/ssl/certs/{region}/{env}.pem",
+    key: "/etc/ssl/private/{region}/{env}.key"
+}
+
+@observability {
+    metrics_endpoint: "https://metrics.{region}.internal/ingest",
+    tracing_endpoint: "https://tracing.{region}.internal/ingest"
+}

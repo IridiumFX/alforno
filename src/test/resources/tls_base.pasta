@@ -1,0 +1,8 @@
+; TLS base config
+
+@tls {
+    cert: "/etc/ssl/certs/base.pem",
+    key: "/etc/ssl/private/base.key",
+    protocols: ["TLSv1.2", "TLSv1.3"],
+    verify: true
+}

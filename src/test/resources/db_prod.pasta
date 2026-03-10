@@ -1,0 +1,7 @@
+; Database production overrides
+
+@database {
+    host: "db.{region}.internal",
+    name: "platform_prod",
+    pool_max: 100
+}

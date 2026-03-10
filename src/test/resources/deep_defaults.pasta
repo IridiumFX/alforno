@@ -1,0 +1,41 @@
+; Layer 1: absolute defaults — every field defined here
+
+@app {
+    name: "platform",
+    port: 8080,
+    workers: 2,
+    log_level: "info",
+    debug: false,
+    timeout: 30,
+    max_connections: 100
+}
+
+@db {
+    engine: "postgres",
+    port: 5432,
+    pool_min: 1,
+    pool_max: 5,
+    timeout: 10,
+    ssl: false
+}
+
+@cache {
+    enabled: false,
+    ttl: 60,
+    max_size: 256
+}
+
+@tls {
+    enabled: false,
+    cert: "/etc/ssl/certs/default.pem",
+    key: "/etc/ssl/private/default.key",
+    protocols: ["TLSv1.2", "TLSv1.3"],
+    verify: true
+}
+
+@observability {
+    metrics_enabled: false,
+    tracing_enabled: false,
+    log_format: "text",
+    sample_rate: 0.1
+}

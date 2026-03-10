@@ -1,0 +1,29 @@
+; Layer 3: production environment overrides
+
+@app {
+    log_level: "warn",
+    replicas: 8,
+    max_connections: 1000
+}
+
+@db {
+    pool_min: 10,
+    pool_max: 100,
+    read_replica: "db-ro.{cluster}.internal"
+}
+
+@cache {
+    ttl_seconds: 3600,
+    max_entries: 500000
+}
+
+@observability {
+    log_sampling_rate: 0.1,
+    alert_threshold_ms: 500
+}
+
+@security {
+    token_ttl_s: 900,
+    rate_limit_rps: 5000,
+    audit_log: true
+}
