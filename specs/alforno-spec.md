@@ -1,11 +1,13 @@
 # Alforno Specification
-## A Pasta Processor Library
+## A Pasta/Basta Processor Library
 
 ---
 
 ## 1. Overview
 
 Alforno (*al forno* — Italian for "baked") is a processing layer built on top of the Pasta format. It takes one or more **input pastlets** and emits a single **output pastlet** by merging named sections according to one of two operations: **aggregate** or **conflate**.
+
+Alforno can be built against either **Pasta** (text-only) or **Basta** (text + binary blobs). When built with Basta, both `.pasta` and `.basta` inputs can be mixed in the same processing context — Basta's parser handles pure-text Pasta files natively.
 
 Alforno operates on named sections exclusively. Anonymous container files are not valid inputs.
 
@@ -15,7 +17,7 @@ Alforno operates on named sections exclusively. Anonymous container files are no
 
 | Term | Meaning |
 |---|---|
-| **pastlet** | A valid Pasta file using named sections (`@name container`) |
+| **pastlet** | A valid Pasta (or Basta) file using named sections (`@name container`) |
 | **recipe pastlet** | A format contract required by `conflate`. First positional argument |
 | **input pastlet** | Carries data. One or more files, processed in declaration order |
 | **output pastlet** | The result emitted by alforno |
@@ -71,7 +73,21 @@ Links are resolved in topological order. If section `@A` contains a link to `@B`
 
 ---
 
-## 5. Recipe Pastlet Structure
+## 5. Blob Handling (Basta Mode)
+
+When built against Basta (`ALF_USE_BASTA`), alforno accepts inputs containing binary blob values. Blobs are **opaque leaf values** — they are never interpreted, traversed, or modified by any pass:
+
+- **Pass 1 (Parameterize)** — blobs are cloned as-is. No `{variable}` scanning occurs inside a blob.
+- **Pass 2 (Merge)** — blobs participate in merge like any other scalar value. With `"replace"`, the last blob wins. With `"collect"`, blobs are collected into arrays alongside other values.
+- **Pass 3 (Link)** — blobs are cloned as-is. No label-ref resolution occurs inside a blob.
+
+A blob is structurally equivalent to a string or number for merging purposes: it is an atomic, indivisible value. Alforno never reads, writes, or allocates blob content beyond cloning.
+
+When built against Pasta (the default), blob values cannot appear in the value tree and this section does not apply.
+
+---
+
+## 6. Recipe Pastlet Structure
 
 Required only for `conflate`. Each section in the recipe declares one output section. The section name becomes the output section name.
 
@@ -104,7 +120,7 @@ An unknown merge strategy is a hard error.
 
 ---
 
-## 6. Error Conditions
+## 7. Error Conditions
 
 | Condition | Severity | Pass |
 |---|---|---|
@@ -117,7 +133,7 @@ An unknown merge strategy is a hard error.
 
 ---
 
-## 7. Reserved Keys and Sections
+## 8. Reserved Keys and Sections
 
 The following keys in a recipe section map are reserved:
 
@@ -130,13 +146,13 @@ The following section name is reserved across all pastlets:
 
 ---
 
-## 8. Output
+## 9. Output
 
 The output is a valid Pasta file using named sections. `@vars` is never written to output. For `aggregate`, section order follows declaration order across inputs. For `conflate`, section order follows recipe declaration order.
 
 ---
 
-## 9. C API Sketch
+## 10. C API Sketch
 
 ```c
 typedef struct AlfContext AlfContext;
@@ -161,4 +177,4 @@ void alf_free(AlfContext *ctx);
 
 ---
 
-*Alforno sits entirely above the Pasta layer. It never modifies the Pasta grammar or parser. All inputs and outputs are valid Pasta files.*
+*Alforno sits entirely above the Pasta/Basta layer. It never modifies the grammar or parser. All inputs and outputs are valid Pasta (or Basta) files.*
