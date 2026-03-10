@@ -1,7 +1,16 @@
 #ifndef ALFORNO_H
 #define ALFORNO_H
 
+#ifdef ALF_USE_BASTA
+#include "basta.h"
+#ifndef ALF_BASTA_COMPAT_TYPES
+#define ALF_BASTA_COMPAT_TYPES
+typedef BastaValue   PastaValue;
+typedef BastaResult  PastaResult;
+#endif
+#else
 #include "pasta.h"
+#endif
 #include <stddef.h>
 
 /* DLL export/import (ALF_STATIC disables for static builds) */

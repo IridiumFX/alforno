@@ -1,6 +1,7 @@
 #ifndef ALFORNO_INTERNAL_H
 #define ALFORNO_INTERNAL_H
 
+#include "alf_backend.h"
 #include "alforno.h"
 #include <stdlib.h>
 #include <string.h>

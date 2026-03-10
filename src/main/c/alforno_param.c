@@ -159,6 +159,13 @@ static PastaValue *subst_value(const PastaValue *v, const PastaValue *vars,
         }
         return m;
     }
+#ifdef ALF_HAS_BLOB
+    case PASTA_BLOB: {
+        size_t blen;
+        const uint8_t *data = pasta_get_blob(v, &blen);
+        return pasta_new_blob(data, blen);
+    }
+#endif
     }
     return pasta_new_null();
 }
@@ -235,13 +242,8 @@ int alf_pass1_parameterize(AlfContext *ctx, AlfResult *result) {
     PastaValue *vars = collect_and_strip_vars(ctx, result);
     if (!vars) return -1;
 
-    /* If no variables defined, nothing to substitute */
-    if (pasta_count(vars) == 0) {
-        pasta_free(vars);
-        return 0;
-    }
-
-    /* Substitute in all inputs */
+    /* Substitute in all inputs (even with empty vars, so that any
+       {variable} tokens in the input are caught as unresolved errors) */
     for (size_t i = 0; i < ctx->input_count; i++) {
         PastaValue *subst = subst_value(ctx->inputs[i], vars, result);
         if (!subst) {

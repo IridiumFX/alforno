@@ -36,6 +36,13 @@ PastaValue *alf_value_clone(const PastaValue *v) {
         }
         return m;
     }
+#ifdef ALF_HAS_BLOB
+    case PASTA_BLOB: {
+        size_t blen;
+        const uint8_t *data = pasta_get_blob(v, &blen);
+        return pasta_new_blob(data, blen);
+    }
+#endif
     }
     return pasta_new_null();
 }
@@ -117,7 +124,7 @@ ALF_API int alf_set_recipe(AlfContext *ctx, const char *src, size_t len,
         pasta_free(v);
         return -1;
     }
-    if (pasta_type(v) != PASTA_MAP) {
+    if (pasta_type(v) != PASTA_MAP || !pr.sections) {
         alf_set_error(result, ALF_ERR_NOT_SECTIONS, 0, NULL,
                       "recipe must be a named-section file");
         pasta_free(v);
@@ -150,7 +157,7 @@ ALF_API int alf_add_input(AlfContext *ctx, const char *src, size_t len,
         pasta_free(v);
         return -1;
     }
-    if (pasta_type(v) != PASTA_MAP) {
+    if (pasta_type(v) != PASTA_MAP || !pr.sections) {
         alf_set_error(result, ALF_ERR_NOT_SECTIONS, 0, NULL,
                       "input must be a named-section file");
         pasta_free(v);

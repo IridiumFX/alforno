@@ -1,5 +1,9 @@
 #include "alforno.h"
+#ifdef ALF_USE_BASTA
+#include "alf_backend.h"
+#else
 #include "pasta.h"
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -882,9 +886,9 @@ static void test_input_validation(void) {
     ASSERT(r.code == ALF_ERR_PARSE, "parse error");
     alf_free(ctx);
 
-    /* Recipe syntax error */
+    /* Anonymous container rejected as recipe */
     ctx = alf_create(ALF_CONFLATE, &r);
-    rc = alf_set_recipe(ctx, "{ not sections }", 16, &r);
+    rc = alf_set_recipe(ctx, "{ a: 1 }", 8, &r);
     ASSERT(rc != 0, "anonymous recipe rejected");
     ASSERT(r.code == ALF_ERR_NOT_SECTIONS, "recipe not-sections error");
     alf_free(ctx);

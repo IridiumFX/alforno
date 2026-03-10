@@ -11,10 +11,21 @@ Alforno (*al forno* — Italian for "baked") takes one or more input pastlets an
 
 ## Building
 
-Requires CMake 3.20+ and a C11 compiler. The [Pasta](https://github.com/IridiumFX/Pasta) library is fetched automatically.
+Requires CMake 3.20+ and a C11 compiler. The parser library is fetched automatically.
+
+Alforno supports two backends, selected at build time:
+
+- **Pasta** (default) — text-only configuration format
+- **Basta** — superset of Pasta with binary blob support
 
 ```bash
+# Build with Pasta (default)
 cmake --preset linux        # or: macos, windows, freebsd
+cmake --build build/linux
+./build/linux/bin/alforno_test
+
+# Build with Basta (binary blob support)
+cmake --preset linux -DALF_USE_BASTA=ON
 cmake --build build/linux
 ./build/linux/bin/alforno_test
 ```
