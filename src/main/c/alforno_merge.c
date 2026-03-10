@@ -111,6 +111,128 @@ static PastaValue *gather_consumes(AlfContext *ctx,
 }
 
 /*
+ * Gather all sections named in the consumes array using "collect" semantics.
+ * For map sections: keys that appear in multiple inputs are collected into
+ * arrays (in input order).  Keys that appear only once stay as-is.
+ * Array values from multiple inputs are concatenated.
+ * Returns NULL (without error) if no matching sections are found.
+ */
+static PastaValue *gather_consumes_collect(AlfContext *ctx,
+                                            const PastaValue *consumes) {
+    PastaValue *acc = NULL;
+
+    for (size_t inp_i = 0; inp_i < ctx->input_count; inp_i++) {
+        PastaValue *inp = ctx->inputs[inp_i];
+        if (!inp || pasta_type(inp) != PASTA_MAP) continue;
+
+        for (size_t ci = 0; ci < pasta_count(consumes); ci++) {
+            const char *cname = pasta_get_string(pasta_array_get(consumes, ci));
+            if (!cname) continue;
+
+            const PastaValue *sec = pasta_map_get(inp, cname);
+            if (!sec) continue;
+
+            if (!acc) {
+                acc = alf_value_clone(sec);
+                if (!acc) return NULL;
+                continue;
+            }
+
+            if (pasta_type(acc) != PASTA_MAP || pasta_type(sec) != PASTA_MAP) {
+                /* Non-map section: replace (collect only applies to maps) */
+                PastaValue *c = alf_value_clone(sec);
+                pasta_free(acc);
+                if (!c) return NULL;
+                acc = c;
+                continue;
+            }
+
+            /* Map-to-map collect merge */
+            PastaValue *result = pasta_new_map();
+            if (!result) { pasta_free(acc); return NULL; }
+
+            /* Copy existing acc fields */
+            for (size_t k = 0; k < pasta_count(acc); k++) {
+                const char *key = pasta_map_key(acc, k);
+                const PastaValue *aval = pasta_map_value(acc, k);
+                const PastaValue *sval = pasta_map_get(sec, key);
+
+                PastaValue *merged_val;
+                if (!sval) {
+                    /* Key only in acc — keep as-is */
+                    merged_val = alf_value_clone(aval);
+                } else if (pasta_type(aval) == PASTA_ARRAY &&
+                           pasta_type(sval) == PASTA_ARRAY) {
+                    /* Both arrays — concatenate */
+                    merged_val = pasta_new_array();
+                    if (merged_val) {
+                        for (size_t i = 0; i < pasta_count(aval); i++) {
+                            PastaValue *item = alf_value_clone(pasta_array_get(aval, i));
+                            if (!item || pasta_push(merged_val, item)) {
+                                pasta_free(item); pasta_free(merged_val);
+                                merged_val = NULL; break;
+                            }
+                        }
+                        if (merged_val) {
+                            for (size_t i = 0; i < pasta_count(sval); i++) {
+                                PastaValue *item = alf_value_clone(pasta_array_get(sval, i));
+                                if (!item || pasta_push(merged_val, item)) {
+                                    pasta_free(item); pasta_free(merged_val);
+                                    merged_val = NULL; break;
+                                }
+                            }
+                        }
+                    }
+                } else if (pasta_type(aval) == PASTA_ARRAY) {
+                    /* acc is already an array (from prior collect), append new value */
+                    merged_val = alf_value_clone(aval);
+                    if (merged_val) {
+                        PastaValue *item = alf_value_clone(sval);
+                        if (!item || pasta_push(merged_val, item)) {
+                            pasta_free(item); pasta_free(merged_val);
+                            merged_val = NULL;
+                        }
+                    }
+                } else {
+                    /* Collision: wrap both into array */
+                    merged_val = pasta_new_array();
+                    if (merged_val) {
+                        PastaValue *a = alf_value_clone(aval);
+                        PastaValue *b = alf_value_clone(sval);
+                        if (!a || !b ||
+                            pasta_push(merged_val, a) || pasta_push(merged_val, b)) {
+                            pasta_free(a); pasta_free(b);
+                            pasta_free(merged_val);
+                            merged_val = NULL;
+                        }
+                    }
+                }
+
+                if (!merged_val || pasta_set(result, key, merged_val)) {
+                    pasta_free(merged_val); pasta_free(result); pasta_free(acc);
+                    return NULL;
+                }
+            }
+
+            /* Add keys only in sec (not in acc) */
+            for (size_t k = 0; k < pasta_count(sec); k++) {
+                const char *key = pasta_map_key(sec, k);
+                if (pasta_map_get(acc, key)) continue; /* already handled */
+                PastaValue *c = alf_value_clone(pasta_map_value(sec, k));
+                if (!c || pasta_set(result, key, c)) {
+                    pasta_free(c); pasta_free(result); pasta_free(acc);
+                    return NULL;
+                }
+            }
+
+            pasta_free(acc);
+            acc = result;
+        }
+    }
+    return acc;
+}
+
+/*
  * Build the output section for a conflate rule.
  * merged: the result of gathering and merging the consumed input sections.
  * rule:   the recipe section map (consumes + field descriptors).
@@ -128,7 +250,8 @@ static PastaValue *build_conflated_section(const PastaValue *merged,
 
     for (size_t fi = 0; fi < pasta_count(rule); fi++) {
         const char *field = pasta_map_key(rule, fi);
-        if (strcmp(field, "consumes") == 0) continue;
+        if (strcmp(field, "consumes") == 0 || strcmp(field, "merge") == 0)
+            continue;
 
         const PastaValue *fval = merged ? pasta_map_get(merged, field) : NULL;
         if (!fval) {
@@ -180,7 +303,26 @@ static PastaValue *do_conflate(AlfContext *ctx, AlfResult *result) {
             return NULL;
         }
 
-        PastaValue *merged = gather_consumes(ctx, consumes);
+        /* Determine merge strategy: "replace" (default) or "collect" */
+        int use_collect = 0;
+        const PastaValue *merge_val = pasta_map_get(rule, "merge");
+        if (merge_val) {
+            const char *ms = pasta_get_string(merge_val);
+            if (ms && strcmp(ms, "collect") == 0)
+                use_collect = 1;
+            else if (ms && strcmp(ms, "replace") != 0) {
+                char msg[320];
+                snprintf(msg, sizeof(msg),
+                         "unknown merge strategy '%s' (expected 'replace' or 'collect')", ms);
+                alf_set_error(result, ALF_ERR_BAD_RECIPE, 2, secname, msg);
+                pasta_free(out);
+                return NULL;
+            }
+        }
+
+        PastaValue *merged = use_collect
+            ? gather_consumes_collect(ctx, consumes)
+            : gather_consumes(ctx, consumes);
         /* merged may be NULL if no inputs matched — that's OK, fields will be absent */
 
         PastaValue *sec = build_conflated_section(merged, rule, secname, result);

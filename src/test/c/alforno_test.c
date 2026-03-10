@@ -1232,6 +1232,176 @@ static void test_conflate_label_ref_passes_through(void) {
 }
 
 /* ================================================================== */
+/*  14b. Pass 2 conflate: merge strategy "collect"                    */
+/* ================================================================== */
+
+static void test_conflate_collect_basic(void) {
+    SUITE("Pass 2 conflate collect: scalar collision wraps into array");
+
+    AlfResult r;
+    const char *recipe =
+        "@grants { consumes: [\"grants\"], merge: \"collect\","
+        "          \"com.iridiumfx\": \"perm\" }";
+    const char *srcs[] = {
+        "@grants { \"com.iridiumfx\": \"r\" }",
+        "@grants { \"com.iridiumfx\": \"cw\" }",
+        "@grants { \"com.iridiumfx\": \"rd\" }"
+    };
+    PastaValue *out = run_conflate(recipe, srcs, 3, &r);
+    ASSERT(out != NULL, "process ok");
+    if (!out) { SUITE_OK(); return; }
+
+    const PastaValue *grants = pasta_map_get(out, "grants");
+    ASSERT(grants != NULL, "grants section");
+    const PastaValue *perm = pasta_map_get(grants, "com.iridiumfx");
+    ASSERT(perm != NULL, "com.iridiumfx present");
+    ASSERT(pasta_type(perm) == PASTA_ARRAY, "collected into array");
+    ASSERT(pasta_count(perm) == 3, "3 values");
+    ASSERT(strcmp(pasta_get_string(pasta_array_get(perm, 0)), "r") == 0, "first=r");
+    ASSERT(strcmp(pasta_get_string(pasta_array_get(perm, 1)), "cw") == 0, "second=cw");
+    ASSERT(strcmp(pasta_get_string(pasta_array_get(perm, 2)), "rd") == 0, "third=rd");
+    pasta_free(out);
+
+    SUITE_OK();
+}
+
+static void test_conflate_collect_single_key(void) {
+    SUITE("Pass 2 conflate collect: single-occurrence key stays as-is");
+
+    AlfResult r;
+    const char *recipe =
+        "@grants { consumes: [\"grants\"], merge: \"collect\","
+        "          \"com.iridiumfx\": \"perm\", \"com.iridiumfx.internal\": \"perm\" }";
+    const char *srcs[] = {
+        "@grants { \"com.iridiumfx\": \"r\" }",
+        "@grants { \"com.iridiumfx\": \"cw\", \"com.iridiumfx.internal\": \"crwd\" }"
+    };
+    PastaValue *out = run_conflate(recipe, srcs, 2, &r);
+    ASSERT(out != NULL, "process ok");
+    if (!out) { SUITE_OK(); return; }
+
+    const PastaValue *grants = pasta_map_get(out, "grants");
+    /* com.iridiumfx collides → array */
+    const PastaValue *perm = pasta_map_get(grants, "com.iridiumfx");
+    ASSERT(pasta_type(perm) == PASTA_ARRAY, "collision → array");
+    ASSERT(pasta_count(perm) == 2, "2 values");
+
+    /* com.iridiumfx.internal appears once → stays as string */
+    const PastaValue *internal = pasta_map_get(grants, "com.iridiumfx.internal");
+    ASSERT(internal != NULL, "internal present");
+    ASSERT(pasta_type(internal) == PASTA_STRING, "single occurrence stays as-is");
+    ASSERT(strcmp(pasta_get_string(internal), "crwd") == 0, "value=crwd");
+    pasta_free(out);
+
+    SUITE_OK();
+}
+
+static void test_conflate_collect_arrays(void) {
+    SUITE("Pass 2 conflate collect: array fields are concatenated");
+
+    AlfResult r;
+    const char *recipe =
+        "@user { consumes: [\"user\"], merge: \"collect\","
+        "        teams: \"list\" }";
+    const char *srcs[] = {
+        "@user { teams: [\"core\"] }",
+        "@user { teams: [\"platform\", \"security\"] }"
+    };
+    PastaValue *out = run_conflate(recipe, srcs, 2, &r);
+    ASSERT(out != NULL, "process ok");
+    if (!out) { SUITE_OK(); return; }
+
+    const PastaValue *user = pasta_map_get(out, "user");
+    const PastaValue *teams = pasta_map_get(user, "teams");
+    ASSERT(teams != NULL, "teams present");
+    ASSERT(pasta_type(teams) == PASTA_ARRAY, "concatenated array");
+    ASSERT(pasta_count(teams) == 3, "3 teams total");
+    ASSERT(strcmp(pasta_get_string(pasta_array_get(teams, 0)), "core") == 0, "core");
+    ASSERT(strcmp(pasta_get_string(pasta_array_get(teams, 1)), "platform") == 0, "platform");
+    ASSERT(strcmp(pasta_get_string(pasta_array_get(teams, 2)), "security") == 0, "security");
+    pasta_free(out);
+
+    SUITE_OK();
+}
+
+static void test_conflate_collect_mixed_with_replace(void) {
+    SUITE("Pass 2 conflate collect: mixed sections — collect and replace coexist");
+
+    AlfResult r;
+    const char *recipe =
+        "@grants   { consumes: [\"grants\"],   merge: \"collect\","
+        "            \"com.iridiumfx\": \"perm\" }\n"
+        "@identity { consumes: [\"identity\"], merge: \"replace\","
+        "            name: \"required\" }";
+    const char *srcs[] = {
+        "@grants   { \"com.iridiumfx\": \"r\" }\n"
+        "@identity { name: \"alice\" }",
+        "@grants   { \"com.iridiumfx\": \"cw\" }\n"
+        "@identity { name: \"bob\" }"
+    };
+    PastaValue *out = run_conflate(recipe, srcs, 2, &r);
+    ASSERT(out != NULL, "process ok");
+    if (!out) { SUITE_OK(); return; }
+
+    /* grants: collect → array */
+    const PastaValue *grants = pasta_map_get(out, "grants");
+    const PastaValue *perm = pasta_map_get(grants, "com.iridiumfx");
+    ASSERT(pasta_type(perm) == PASTA_ARRAY, "grants collected");
+    ASSERT(pasta_count(perm) == 2, "2 grant values");
+
+    /* identity: replace → last wins */
+    const PastaValue *id = pasta_map_get(out, "identity");
+    const PastaValue *name = pasta_map_get(id, "name");
+    ASSERT(pasta_type(name) == PASTA_STRING, "identity replaced");
+    ASSERT(strcmp(pasta_get_string(name), "bob") == 0, "last-write-wins → bob");
+    pasta_free(out);
+
+    SUITE_OK();
+}
+
+static void test_conflate_collect_default_is_replace(void) {
+    SUITE("Pass 2 conflate collect: omitted merge key defaults to replace");
+
+    AlfResult r;
+    /* No merge key — should behave as replace (current default) */
+    const char *recipe =
+        "@app { consumes: [\"app\"], host: \"desc\" }";
+    const char *srcs[] = {
+        "@app { host: \"first\" }",
+        "@app { host: \"second\" }"
+    };
+    PastaValue *out = run_conflate(recipe, srcs, 2, &r);
+    ASSERT(out != NULL, "process ok");
+    if (!out) { SUITE_OK(); return; }
+
+    const PastaValue *app = pasta_map_get(out, "app");
+    const PastaValue *host = pasta_map_get(app, "host");
+    ASSERT(pasta_type(host) == PASTA_STRING, "still a string (not array)");
+    ASSERT(strcmp(pasta_get_string(host), "second") == 0, "last-write-wins");
+    pasta_free(out);
+
+    SUITE_OK();
+}
+
+static void test_conflate_collect_bad_strategy(void) {
+    SUITE("Pass 2 conflate collect: unknown merge strategy is a hard error");
+
+    AlfResult r;
+    const char *recipe =
+        "@app { consumes: [\"app\"], merge: \"bogus\", host: \"desc\" }";
+    const char *srcs[] = {
+        "@app { host: \"val\" }"
+    };
+    PastaValue *out = run_conflate(recipe, srcs, 1, &r);
+    ASSERT(out == NULL, "returns NULL");
+    ASSERT(r.code == ALF_ERR_BAD_RECIPE, "bad recipe error");
+    ASSERT(r.pass == 2, "error in pass 2");
+    printf("    error: %s\n", r.message);
+
+    SUITE_OK();
+}
+
+/* ================================================================== */
 /*  15. Pass 3: additional link cases                                 */
 /* ================================================================== */
 
@@ -1742,6 +1912,14 @@ int main(void) {
     test_conflate_fan_in();
     test_conflate_no_matching_inputs();
     test_conflate_label_ref_passes_through();
+
+    /* Pass 2 conflate: merge strategy "collect" */
+    test_conflate_collect_basic();
+    test_conflate_collect_single_key();
+    test_conflate_collect_arrays();
+    test_conflate_collect_mixed_with_replace();
+    test_conflate_collect_default_is_replace();
+    test_conflate_collect_bad_strategy();
 
     /* Pass 3 links: additional */
     test_link_in_array_element();

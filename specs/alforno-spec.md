@@ -78,13 +78,29 @@ Required only for `conflate`. Each section in the recipe declares one output sec
 ```
 @output_section_name {
     consumes: ["section_name", ...],
+    merge:    "replace",
     field:    "descriptor"
 }
 ```
 
 `consumes` lists which input section names are subject to this rule. It is required. All other keys are field descriptors — their presence in the recipe is the allowlist: any field not listed is dropped from output. Descriptor values are informational and carry no processing semantics. They serve as documentation of intent and as the explicit field allowlist.
 
-`consumes` is the only reserved key in a recipe section.
+`merge` selects the merge strategy for same-key collisions within consumed sections. It is optional and defaults to `"replace"`.
+
+| Strategy    | Behavior on same-key collision                                     |
+|-------------|--------------------------------------------------------------------|
+| `"replace"` | Last-write-wins (default, unchanged from prior behavior)           |
+| `"collect"` | Collect all values into an array, in input order                   |
+
+With `"collect"`:
+
+- A key that appears in multiple inputs produces an array of all seen values.
+- A key that appears in only one input stays as-is (no wrapping).
+- If colliding values are both arrays, they are concatenated rather than nested.
+
+An unknown merge strategy is a hard error.
+
+`consumes` and `merge` are the reserved keys in a recipe section.
 
 ---
 
@@ -95,6 +111,7 @@ Required only for `conflate`. Each section in the recipe declares one output sec
 | Unresolved variable `{x}` | Hard error | 1 |
 | `@vars` section is not a map | Hard error | 1 |
 | `consumes` missing or empty in recipe section | Hard error | 2 |
+| Unknown `merge` strategy | Hard error | 2 |
 | Dependency cycle in link graph | Hard error | pre-3 |
 | Missing link target `@section_name` | Hard error | 3 |
 
@@ -102,9 +119,10 @@ Required only for `conflate`. Each section in the recipe declares one output sec
 
 ## 7. Reserved Keys and Sections
 
-The following key in a recipe section map is reserved:
+The following keys in a recipe section map are reserved:
 
 - `consumes`
+- `merge`
 
 The following section name is reserved across all pastlets:
 
