@@ -1,0 +1,7 @@
+@include [
+    "inc_nested_a.pasta"
+]
+
+@app {
+    name: "nested"
+}

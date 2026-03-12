@@ -8,6 +8,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#ifdef _WIN32
+#include <direct.h>
+#else
+#include <sys/stat.h>
+#endif
 
 /* ------------------------------------------------------------------ */
 /*  Minimal test harness (matching pasta_test.c style)                */
@@ -1190,7 +1195,7 @@ static void test_conflate_no_matching_inputs(void) {
 
     AlfResult r;
     const char *recipe =
-        "@out { consumes: [\"ghost\"], x: \"required\", y: \"required\" }";
+        "@out { consumes: [\"ghost\"], x: \"optional\", y: \"optional\" }";
     const char *srcs[] = {
         "@other { x: 1, y: 2 }"   /* "ghost" section never appears */
     };
@@ -1850,6 +1855,724 @@ static void test_deep_layering_vars_resolved_before_merge(void) {
 }
 
 /* ================================================================== */
+/*  Scatter                                                            */
+/* ================================================================== */
+
+static void test_scatter_basic(void) {
+    SUITE("Scatter: each section written to its own file");
+
+    AlfResult r;
+    AlfContext *ctx = alf_create(ALF_SCATTER, &r);
+    ASSERT(ctx != NULL, "create ok");
+    if (!ctx) return;
+
+    const char *src =
+        "@server { host: \"localhost\", port: 8080 }\n"
+        "@logging { level: \"info\", file: \"/var/log/app.log\" }";
+    alf_add_input(ctx, src, strlen(src), &r);
+
+    /* Write to test resources dir (we'll clean up) */
+    char outdir[512];
+    snprintf(outdir, sizeof(outdir), "%s/scatter_out", ALF_TEST_RESOURCES);
+#ifdef _WIN32
+    _mkdir(outdir);
+#else
+    mkdir(outdir, 0755);
+#endif
+
+    int count = alf_scatter_to_dir(ctx, outdir, ".pasta", &r);
+    ASSERT(count == 2, "wrote 2 files");
+    ASSERT(r.code == ALF_OK, "no error");
+
+    /* Verify server.pasta exists and is parseable */
+    char path[512];
+    snprintf(path, sizeof(path), "%s/server.pasta", outdir);
+    FILE *fp = fopen(path, "rb");
+    ASSERT(fp != NULL, "server.pasta created");
+    if (fp) {
+        fseek(fp, 0, SEEK_END);
+        long sz = ftell(fp);
+        fseek(fp, 0, SEEK_SET);
+        char *buf = (char *)malloc((size_t)sz + 1);
+        fread(buf, 1, (size_t)sz, fp);
+        buf[sz] = '\0';
+        fclose(fp);
+
+        PastaResult pr;
+        PastaValue *parsed = pasta_parse(buf, (size_t)sz, &pr);
+        ASSERT(parsed != NULL, "server.pasta parseable");
+        if (parsed) {
+            const PastaValue *srv = pasta_map_get(parsed, "server");
+            ASSERT(srv != NULL, "server section in file");
+            if (srv) {
+                ASSERT(pasta_get_number(pasta_map_get(srv, "port")) == 8080,
+                       "port correct");
+            }
+            pasta_free(parsed);
+        }
+        free(buf);
+        remove(path);
+    }
+
+    /* Clean up logging.pasta */
+    snprintf(path, sizeof(path), "%s/logging.pasta", outdir);
+    remove(path);
+#ifdef _WIN32
+    _rmdir(outdir);
+#else
+    rmdir(outdir);
+#endif
+
+    alf_free(ctx);
+    SUITE_OK();
+}
+
+/* ================================================================== */
+/*  Gather                                                             */
+/* ================================================================== */
+
+static PastaValue *run_gather(const char **srcs, size_t n,
+                                AlfPrecedence prec, AlfResult *result) {
+    AlfContext *ctx = alf_create(ALF_GATHER, result);
+    if (!ctx) return NULL;
+    alf_set_precedence(ctx, prec, result);
+    for (size_t i = 0; i < n; i++) {
+        if (alf_add_input(ctx, srcs[i], strlen(srcs[i]), result)) {
+            alf_free(ctx); return NULL;
+        }
+    }
+    PastaValue *out = alf_process(ctx, result);
+    alf_free(ctx);
+    return out;
+}
+
+static void test_gather_last_wins(void) {
+    SUITE("Gather last-wins: later input overrides earlier");
+
+    AlfResult r;
+    const char *srcs[] = {
+        "@cfg { host: \"alpha\", port: 80 }",
+        "@cfg { host: \"beta\",  debug: true }"
+    };
+    PastaValue *out = run_gather(srcs, 2, ALF_LAST_WINS, &r);
+    ASSERT(out != NULL, "process ok");
+    if (out) {
+        const PastaValue *cfg = pasta_map_get(out, "cfg");
+        ASSERT(cfg != NULL, "cfg section");
+        if (cfg) {
+            ASSERT(strcmp(pasta_get_string(pasta_map_get(cfg, "host")), "beta") == 0,
+                   "host: last wins");
+            ASSERT(pasta_get_number(pasta_map_get(cfg, "port")) == 80,
+                   "port: from first (not overridden)");
+            ASSERT(pasta_get_bool(pasta_map_get(cfg, "debug")) == 1,
+                   "debug: added by second");
+        }
+        pasta_free(out);
+    }
+    SUITE_OK();
+}
+
+static void test_gather_first_found(void) {
+    SUITE("Gather first-found: first occurrence of each field kept");
+
+    AlfResult r;
+    const char *srcs[] = {
+        "@cfg { host: \"alpha\", port: 80 }",
+        "@cfg { host: \"beta\",  debug: true }"
+    };
+    PastaValue *out = run_gather(srcs, 2, ALF_FIRST_FOUND, &r);
+    ASSERT(out != NULL, "process ok");
+    if (out) {
+        const PastaValue *cfg = pasta_map_get(out, "cfg");
+        ASSERT(cfg != NULL, "cfg section");
+        if (cfg) {
+            ASSERT(strcmp(pasta_get_string(pasta_map_get(cfg, "host")), "alpha") == 0,
+                   "host: first found wins");
+            ASSERT(pasta_get_number(pasta_map_get(cfg, "port")) == 80,
+                   "port: from first");
+            ASSERT(pasta_get_bool(pasta_map_get(cfg, "debug")) == 1,
+                   "debug: new field from second still added");
+        }
+        pasta_free(out);
+    }
+    SUITE_OK();
+}
+
+static void test_gather_first_found_three_way(void) {
+    SUITE("Gather first-found: three inputs — first values dominate");
+
+    AlfResult r;
+    const char *srcs[] = {
+        "@cfg { host: \"first\",  port: 80 }",
+        "@cfg { host: \"second\", port: 443, timeout: 30 }",
+        "@cfg { host: \"third\",  timeout: 60, retries: 3 }"
+    };
+    PastaValue *out = run_gather(srcs, 3, ALF_FIRST_FOUND, &r);
+    ASSERT(out != NULL, "process ok");
+    if (out) {
+        const PastaValue *cfg = pasta_map_get(out, "cfg");
+        ASSERT(cfg != NULL, "cfg section");
+        if (cfg) {
+            ASSERT(strcmp(pasta_get_string(pasta_map_get(cfg, "host")), "first") == 0,
+                   "host: first found");
+            ASSERT(pasta_get_number(pasta_map_get(cfg, "port")) == 80,
+                   "port: first found");
+            ASSERT(pasta_get_number(pasta_map_get(cfg, "timeout")) == 30,
+                   "timeout: first found (from input 2)");
+            ASSERT(pasta_get_number(pasta_map_get(cfg, "retries")) == 3,
+                   "retries: new field from input 3");
+        }
+        pasta_free(out);
+    }
+    SUITE_OK();
+}
+
+static void test_gather_multiple_sections(void) {
+    SUITE("Gather first-found: multiple sections across inputs");
+
+    AlfResult r;
+    const char *srcs[] = {
+        "@app { name: \"myapp\" }\n@db { host: \"db1\" }",
+        "@app { name: \"other\", version: \"2.0\" }\n@cache { ttl: 300 }"
+    };
+    PastaValue *out = run_gather(srcs, 2, ALF_FIRST_FOUND, &r);
+    ASSERT(out != NULL, "process ok");
+    if (out) {
+        const PastaValue *app = pasta_map_get(out, "app");
+        ASSERT(app != NULL, "app section");
+        if (app) {
+            ASSERT(strcmp(pasta_get_string(pasta_map_get(app, "name")), "myapp") == 0,
+                   "name: first found");
+            ASSERT(strcmp(pasta_get_string(pasta_map_get(app, "version")), "2.0") == 0,
+                   "version: new field added");
+        }
+        ASSERT(pasta_map_get(out, "db") != NULL, "db section from input 1");
+        ASSERT(pasta_map_get(out, "cache") != NULL, "cache section from input 2");
+        pasta_free(out);
+    }
+    SUITE_OK();
+}
+
+/* ================================================================== */
+/*  Conditional sections (when)                                        */
+/* ================================================================== */
+
+static void test_when_basic(void) {
+    SUITE("Conditional when: matching tag includes section");
+
+    AlfResult r;
+    AlfContext *ctx = alf_create(ALF_AGGREGATE, &r);
+    ASSERT(ctx != NULL, "create ok");
+    if (!ctx) return;
+
+    const char *tags[] = { "production" };
+    alf_set_tags(ctx, tags, 1, &r);
+
+    const char *src =
+        "@app { name: \"myapp\" }\n"
+        "@logging { when: \"production\", level: \"warn\" }\n"
+        "@debug { when: \"development\", verbose: true }";
+    alf_add_input(ctx, src, strlen(src), &r);
+
+    PastaValue *out = alf_process(ctx, &r);
+    ASSERT(out != NULL, "process ok");
+    if (out) {
+        ASSERT(pasta_map_get(out, "app") != NULL, "app included (no when)");
+        ASSERT(pasta_map_get(out, "logging") != NULL, "logging included (matches tag)");
+        ASSERT(pasta_map_get(out, "debug") == NULL, "debug excluded (wrong tag)");
+
+        /* "when" key is stripped from output */
+        const PastaValue *log_sec = pasta_map_get(out, "logging");
+        if (log_sec) {
+            ASSERT(pasta_map_get(log_sec, "when") == NULL, "when key stripped");
+            ASSERT(strcmp(pasta_get_string(pasta_map_get(log_sec, "level")), "warn") == 0,
+                   "level present");
+        }
+        pasta_free(out);
+    }
+    alf_free(ctx);
+    SUITE_OK();
+}
+
+static void test_when_array(void) {
+    SUITE("Conditional when: array of tags (any match includes)");
+
+    AlfResult r;
+    AlfContext *ctx = alf_create(ALF_AGGREGATE, &r);
+    ASSERT(ctx != NULL, "create ok");
+    if (!ctx) return;
+
+    const char *tags[] = { "staging" };
+    alf_set_tags(ctx, tags, 1, &r);
+
+    const char *src =
+        "@monitoring { when: [\"staging\", \"production\"], enabled: true }\n"
+        "@debug { when: [\"development\"], verbose: true }";
+    alf_add_input(ctx, src, strlen(src), &r);
+
+    PastaValue *out = alf_process(ctx, &r);
+    ASSERT(out != NULL, "process ok");
+    if (out) {
+        ASSERT(pasta_map_get(out, "monitoring") != NULL, "monitoring included (staging matches)");
+        ASSERT(pasta_map_get(out, "debug") == NULL, "debug excluded");
+        pasta_free(out);
+    }
+    alf_free(ctx);
+    SUITE_OK();
+}
+
+static void test_when_no_tags(void) {
+    SUITE("Conditional when: no tags set — all when sections excluded");
+
+    AlfResult r;
+    AlfContext *ctx = alf_create(ALF_AGGREGATE, &r);
+    ASSERT(ctx != NULL, "create ok");
+    if (!ctx) return;
+
+    const char *src =
+        "@app { name: \"myapp\" }\n"
+        "@logging { when: \"production\", level: \"warn\" }";
+    alf_add_input(ctx, src, strlen(src), &r);
+
+    PastaValue *out = alf_process(ctx, &r);
+    ASSERT(out != NULL, "process ok");
+    if (out) {
+        ASSERT(pasta_map_get(out, "app") != NULL, "app included");
+        ASSERT(pasta_map_get(out, "logging") == NULL, "logging excluded (no active tags)");
+        pasta_free(out);
+    }
+    alf_free(ctx);
+    SUITE_OK();
+}
+
+static void test_when_with_vars(void) {
+    SUITE("Conditional when: vars resolved before when filtering");
+
+    AlfResult r;
+    AlfContext *ctx = alf_create(ALF_AGGREGATE, &r);
+    ASSERT(ctx != NULL, "create ok");
+    if (!ctx) return;
+
+    const char *tags[] = { "production" };
+    alf_set_tags(ctx, tags, 1, &r);
+
+    const char *src =
+        "@vars { env: \"prod\" }\n"
+        "@app { name: \"{env}-app\", when: \"production\" }";
+    alf_add_input(ctx, src, strlen(src), &r);
+
+    PastaValue *out = alf_process(ctx, &r);
+    ASSERT(out != NULL, "process ok");
+    if (out) {
+        const PastaValue *app = pasta_map_get(out, "app");
+        ASSERT(app != NULL, "app included");
+        if (app) {
+            ASSERT(strcmp(pasta_get_string(pasta_map_get(app, "name")), "prod-app") == 0,
+                   "var substituted before when filtering");
+        }
+        pasta_free(out);
+    }
+    alf_free(ctx);
+    SUITE_OK();
+}
+
+/* ================================================================== */
+/*  merge: "deep"                                                      */
+/* ================================================================== */
+
+static void test_conflate_deep_basic(void) {
+    SUITE("Pass 2 conflate deep: nested maps merged recursively");
+
+    const char *recipe =
+        "@cfg { consumes: [\"cfg\"], merge: \"deep\","
+        "       server: \"nested\", logging: \"nested\" }";
+    const char *srcs[] = {
+        "@cfg { server: { host: \"a.com\", port: 80, tls: { verify: true } },"
+        "       logging: { level: \"info\" } }",
+        "@cfg { server: { port: 443, tls: { cert: \"/x.pem\" } },"
+        "       logging: { file: \"/var/log/app.log\" } }"
+    };
+    AlfResult r;
+    PastaValue *out = run_conflate(recipe, srcs, 2, &r);
+    ASSERT(out != NULL, "process ok");
+    if (!out) return;
+
+    const PastaValue *cfg = pasta_map_get(out, "cfg");
+    ASSERT(cfg != NULL, "cfg section");
+
+    const PastaValue *srv = pasta_map_get(cfg, "server");
+    ASSERT(srv != NULL, "server present");
+    if (srv) {
+        /* host from input 1, port overridden by input 2 */
+        ASSERT(strcmp(pasta_get_string(pasta_map_get(srv, "host")), "a.com") == 0,
+               "host kept from base");
+        ASSERT(pasta_get_number(pasta_map_get(srv, "port")) == 443,
+               "port overridden");
+        /* nested tls: verify from base, cert from overlay */
+        const PastaValue *tls = pasta_map_get(srv, "tls");
+        ASSERT(tls != NULL, "tls sub-map present");
+        if (tls) {
+            ASSERT(pasta_get_bool(pasta_map_get(tls, "verify")) == 1,
+                   "verify kept from base");
+            ASSERT(strcmp(pasta_get_string(pasta_map_get(tls, "cert")), "/x.pem") == 0,
+                   "cert added from overlay");
+        }
+    }
+
+    const PastaValue *log_sec = pasta_map_get(cfg, "logging");
+    ASSERT(log_sec != NULL, "logging present");
+    if (log_sec) {
+        ASSERT(strcmp(pasta_get_string(pasta_map_get(log_sec, "level")), "info") == 0,
+               "level from base");
+        ASSERT(strcmp(pasta_get_string(pasta_map_get(log_sec, "file")), "/var/log/app.log") == 0,
+               "file from overlay");
+    }
+
+    pasta_free(out);
+    SUITE_OK();
+}
+
+static void test_conflate_deep_non_map_override(void) {
+    SUITE("Pass 2 conflate deep: non-map values use last-write-wins");
+
+    const char *recipe =
+        "@cfg { consumes: [\"cfg\"], merge: \"deep\","
+        "       name: \"scalar\", items: \"array\" }";
+    const char *srcs[] = {
+        "@cfg { name: \"alpha\", items: [1, 2] }",
+        "@cfg { name: \"beta\",  items: [3, 4] }"
+    };
+    AlfResult r;
+    PastaValue *out = run_conflate(recipe, srcs, 2, &r);
+    ASSERT(out != NULL, "process ok");
+    if (!out) return;
+
+    const PastaValue *cfg = pasta_map_get(out, "cfg");
+    ASSERT(strcmp(pasta_get_string(pasta_map_get(cfg, "name")), "beta") == 0,
+           "scalar: last wins");
+    const PastaValue *items = pasta_map_get(cfg, "items");
+    ASSERT(pasta_count(items) == 2, "array replaced, not concatenated");
+    ASSERT(pasta_get_number(pasta_array_get(items, 0)) == 3, "array[0]=3");
+
+    pasta_free(out);
+    SUITE_OK();
+}
+
+static void test_conflate_deep_three_layers(void) {
+    SUITE("Pass 2 conflate deep: three-layer deep merge");
+
+    const char *recipe =
+        "@cfg { consumes: [\"cfg\"], merge: \"deep\","
+        "       db: \"nested\" }";
+    const char *srcs[] = {
+        "@cfg { db: { host: \"db1\", pool: { min: 1, max: 5 } } }",
+        "@cfg { db: { pool: { max: 10 } } }",
+        "@cfg { db: { pool: { idle: 30 }, host: \"db3\" } }"
+    };
+    AlfResult r;
+    PastaValue *out = run_conflate(recipe, srcs, 3, &r);
+    ASSERT(out != NULL, "process ok");
+    if (!out) return;
+
+    const PastaValue *db = pasta_map_get(pasta_map_get(out, "cfg"), "db");
+    ASSERT(db != NULL, "db present");
+    if (db) {
+        ASSERT(strcmp(pasta_get_string(pasta_map_get(db, "host")), "db3") == 0,
+               "host from layer 3");
+        const PastaValue *pool = pasta_map_get(db, "pool");
+        ASSERT(pool != NULL, "pool sub-map");
+        if (pool) {
+            ASSERT(pasta_get_number(pasta_map_get(pool, "min")) == 1,
+                   "min from layer 1");
+            ASSERT(pasta_get_number(pasta_map_get(pool, "max")) == 10,
+                   "max from layer 2");
+            ASSERT(pasta_get_number(pasta_map_get(pool, "idle")) == 30,
+                   "idle from layer 3");
+        }
+    }
+
+    pasta_free(out);
+    SUITE_OK();
+}
+
+/* ================================================================== */
+/*  Include directive (@include)                                       */
+/* ================================================================== */
+
+static void test_include_basic(void) {
+    SUITE("Include: basic @include merges included file");
+
+    AlfResult r;
+    AlfContext *ctx = alf_create(ALF_AGGREGATE, &r);
+    ASSERT(ctx != NULL, "create ok");
+    if (!ctx) return;
+
+    alf_set_base_dir(ctx, ALF_TEST_RESOURCES, &r);
+
+    size_t len;
+    char *src = read_file("inc_main.pasta", &len);
+    if (!src) { ASSERT(0, "file load"); alf_free(ctx); return; }
+
+    alf_add_input(ctx, src, len, &r);
+    free(src);
+
+    PastaValue *out = alf_process(ctx, &r);
+    ASSERT(out != NULL, "process ok");
+    if (out) {
+        /* @include should be consumed */
+        ASSERT(pasta_map_get(out, "include") == NULL, "@include consumed");
+        /* defaults from inc_base.pasta should be present */
+        const PastaValue *def = pasta_map_get(out, "defaults");
+        ASSERT(def != NULL, "defaults section from included file");
+        if (def) {
+            ASSERT(pasta_get_number(pasta_map_get(def, "retries")) == 3,
+                   "retries from included file");
+        }
+        /* app section from main file */
+        const PastaValue *app = pasta_map_get(out, "app");
+        ASSERT(app != NULL, "app section");
+        if (app) {
+            /* timeout: 60 from main should override included defaults? No —
+               they are different sections. Both should be present. */
+            ASSERT(pasta_get_number(pasta_map_get(app, "timeout")) == 60,
+                   "app timeout from main");
+        }
+        pasta_free(out);
+    }
+    alf_free(ctx);
+    SUITE_OK();
+}
+
+static void test_include_nested(void) {
+    SUITE("Include: nested includes resolved recursively");
+
+    AlfResult r;
+    AlfContext *ctx = alf_create(ALF_AGGREGATE, &r);
+    ASSERT(ctx != NULL, "create ok");
+    if (!ctx) return;
+
+    alf_set_base_dir(ctx, ALF_TEST_RESOURCES, &r);
+
+    size_t len;
+    char *src = read_file("inc_nested_main.pasta", &len);
+    if (!src) { ASSERT(0, "file load"); alf_free(ctx); return; }
+
+    alf_add_input(ctx, src, len, &r);
+    free(src);
+
+    PastaValue *out = alf_process(ctx, &r);
+    ASSERT(out != NULL, "process ok");
+    if (out) {
+        /* Should have defaults from inc_base (via inc_nested_a) */
+        ASSERT(pasta_map_get(out, "defaults") != NULL,
+               "defaults from deeply nested include");
+        /* layer_a from inc_nested_a */
+        ASSERT(pasta_map_get(out, "layer_a") != NULL,
+               "layer_a from nested include");
+        /* app from main */
+        ASSERT(pasta_map_get(out, "app") != NULL, "app from main");
+        pasta_free(out);
+    }
+    alf_free(ctx);
+    SUITE_OK();
+}
+
+static void test_include_file_not_found(void) {
+    SUITE("Include: missing file is a hard error");
+
+    AlfResult r;
+    AlfContext *ctx = alf_create(ALF_AGGREGATE, &r);
+    ASSERT(ctx != NULL, "create ok");
+    if (!ctx) return;
+
+    alf_set_base_dir(ctx, ALF_TEST_RESOURCES, &r);
+
+    const char *src = "@include [\"nonexistent.pasta\"]\n@app { x: 1 }";
+    alf_add_input(ctx, src, strlen(src), &r);
+
+    PastaValue *out = alf_process(ctx, &r);
+    ASSERT(out == NULL, "process fails");
+    ASSERT(r.code == ALF_ERR_INCLUDE, "include error");
+    printf("    error: %s\n", r.message);
+
+    alf_free(ctx);
+    SUITE_OK();
+}
+
+static void test_add_input_file(void) {
+    SUITE("alf_add_input_file: load file directly");
+
+    AlfResult r;
+    AlfContext *ctx = alf_create(ALF_AGGREGATE, &r);
+    ASSERT(ctx != NULL, "create ok");
+    if (!ctx) return;
+
+    char path[512];
+    snprintf(path, sizeof(path), "%s/base.pasta", ALF_TEST_RESOURCES);
+    int rc = alf_add_input_file(ctx, path, &r);
+    ASSERT(rc == 0, "add_input_file ok");
+
+    PastaValue *out = alf_process(ctx, &r);
+    ASSERT(out != NULL, "process ok");
+    pasta_free(out);
+    alf_free(ctx);
+    SUITE_OK();
+}
+
+/* ================================================================== */
+/*  Validation pass (pass 4)                                           */
+/* ================================================================== */
+
+static void test_validate_required_present(void) {
+    SUITE("Validation: required field present — passes");
+
+    const char *recipe =
+        "@server { consumes: [\"server\"],"
+        "          host: \"required string\","
+        "          port: \"required number\" }";
+    const char *srcs[] = {
+        "@server { host: \"localhost\", port: 8080 }"
+    };
+    AlfResult r;
+    PastaValue *out = run_conflate(recipe, srcs, 1, &r);
+    ASSERT(out != NULL, "process ok");
+    ASSERT(r.code == ALF_OK, "no validation error");
+    pasta_free(out);
+    SUITE_OK();
+}
+
+static void test_validate_required_missing(void) {
+    SUITE("Validation: required field missing — error");
+
+    const char *recipe =
+        "@server { consumes: [\"server\"],"
+        "          host: \"required string\","
+        "          port: \"required number\" }";
+    const char *srcs[] = {
+        "@server { host: \"localhost\" }"
+    };
+    AlfResult r;
+    PastaValue *out = run_conflate(recipe, srcs, 1, &r);
+    ASSERT(out == NULL, "process fails");
+    ASSERT(r.code == ALF_ERR_VALIDATION, "validation error");
+    ASSERT(r.pass == 4, "pass 4");
+    printf("    error: %s\n", r.message);
+    SUITE_OK();
+}
+
+static void test_validate_type_mismatch(void) {
+    SUITE("Validation: type mismatch — error");
+
+    const char *recipe =
+        "@server { consumes: [\"server\"],"
+        "          port: \"required number\" }";
+    const char *srcs[] = {
+        "@server { port: \"not-a-number\" }"
+    };
+    AlfResult r;
+    PastaValue *out = run_conflate(recipe, srcs, 1, &r);
+    ASSERT(out == NULL, "process fails");
+    ASSERT(r.code == ALF_ERR_VALIDATION, "validation error");
+    printf("    error: %s\n", r.message);
+    SUITE_OK();
+}
+
+static void test_validate_optional_absent(void) {
+    SUITE("Validation: optional field absent — passes");
+
+    const char *recipe =
+        "@server { consumes: [\"server\"],"
+        "          host: \"required string\","
+        "          debug: \"optional bool\" }";
+    const char *srcs[] = {
+        "@server { host: \"localhost\" }"
+    };
+    AlfResult r;
+    PastaValue *out = run_conflate(recipe, srcs, 1, &r);
+    ASSERT(out != NULL, "process ok");
+    ASSERT(r.code == ALF_OK, "no error");
+    pasta_free(out);
+    SUITE_OK();
+}
+
+static void test_validate_unrecognized_descriptor(void) {
+    SUITE("Validation: unrecognized descriptor — ignored (backward compat)");
+
+    const char *recipe =
+        "@server { consumes: [\"server\"],"
+        "          host: \"the hostname\" }";
+    const char *srcs[] = {
+        "@server { host: \"localhost\" }"
+    };
+    AlfResult r;
+    PastaValue *out = run_conflate(recipe, srcs, 1, &r);
+    ASSERT(out != NULL, "process ok — old descriptors still work");
+    ASSERT(r.code == ALF_OK, "no error");
+    pasta_free(out);
+    SUITE_OK();
+}
+
+/* ================================================================== */
+/*  alf_process_to_string                                              */
+/* ================================================================== */
+
+static void test_process_to_string(void) {
+    SUITE("alf_process_to_string: basic roundtrip");
+
+    AlfResult r;
+    AlfContext *ctx = alf_create(ALF_AGGREGATE, &r);
+    ASSERT(ctx != NULL, "create ok");
+    if (!ctx) return;
+
+    const char *src = "@config { host: \"localhost\", port: 8080 }";
+    ASSERT(alf_add_input(ctx, src, strlen(src), &r) == 0, "add input");
+
+    char *str = alf_process_to_string(ctx, PASTA_SECTIONS | PASTA_PRETTY, &r);
+    ASSERT(str != NULL, "to_string returned non-null");
+    ASSERT(r.code == ALF_OK, "no error");
+
+    if (str) {
+        /* The string should be parseable back */
+        PastaResult pr;
+        PastaValue *reparsed = pasta_parse(str, strlen(str), &pr);
+        ASSERT(reparsed != NULL, "reparsed ok");
+        if (reparsed) {
+            const PastaValue *cfg = pasta_map_get(reparsed, "config");
+            ASSERT(cfg != NULL, "config section present");
+            if (cfg) {
+                ASSERT(pasta_get_number(pasta_map_get(cfg, "port")) == 8080,
+                       "port roundtripped");
+            }
+            pasta_free(reparsed);
+        }
+        free(str);
+    }
+
+    alf_free(ctx);
+    SUITE_OK();
+}
+
+static void test_process_to_string_error(void) {
+    SUITE("alf_process_to_string: returns NULL on error");
+
+    AlfResult r;
+    AlfContext *ctx = alf_create(ALF_AGGREGATE, &r);
+    ASSERT(ctx != NULL, "create ok");
+    if (!ctx) return;
+
+    /* Input with unresolved variable should cause error */
+    const char *src = "@cfg { val: \"{missing}\" }";
+    alf_add_input(ctx, src, strlen(src), &r);
+
+    char *str = alf_process_to_string(ctx, 0, &r);
+    ASSERT(str == NULL, "returns NULL on error");
+    ASSERT(r.code == ALF_ERR_UNRESOLVED_VAR, "unresolved var error");
+
+    alf_free(ctx);
+    SUITE_OK();
+}
+
+/* ================================================================== */
 /*  MAIN                                                               */
 /* ================================================================== */
 
@@ -1933,6 +2656,43 @@ int main(void) {
     test_deep_layering_vars_resolved_before_merge();
     test_input_validation();
     test_output_roundtrip();
+
+    /* Scatter */
+    test_scatter_basic();
+
+    /* Gather */
+    test_gather_last_wins();
+    test_gather_first_found();
+    test_gather_first_found_three_way();
+    test_gather_multiple_sections();
+
+    /* Conditional sections (when) */
+    test_when_basic();
+    test_when_array();
+    test_when_no_tags();
+    test_when_with_vars();
+
+    /* Pass 2 conflate: merge strategy "deep" */
+    test_conflate_deep_basic();
+    test_conflate_deep_non_map_override();
+    test_conflate_deep_three_layers();
+
+    /* Include directive */
+    test_include_basic();
+    test_include_nested();
+    test_include_file_not_found();
+    test_add_input_file();
+
+    /* Pass 4: validation */
+    test_validate_required_present();
+    test_validate_required_missing();
+    test_validate_type_mismatch();
+    test_validate_optional_absent();
+    test_validate_unrecognized_descriptor();
+
+    /* alf_process_to_string */
+    test_process_to_string();
+    test_process_to_string_error();
 
     printf("\n========================================\n");
     printf("  Suites: %d / %d passed\n", suite_passed, suite_run);

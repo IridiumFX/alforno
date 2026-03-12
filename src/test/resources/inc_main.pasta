@@ -1,0 +1,8 @@
+@include [
+    "inc_base.pasta"
+]
+
+@app {
+    name: "myapp",
+    timeout: 60
+}

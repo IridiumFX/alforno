@@ -12,12 +12,17 @@
 /* ------------------------------------------------------------------ */
 
 #define ALF_MAX_INPUTS 64
+#define ALF_MAX_TAGS   32
 
 struct AlfContext {
     AlfOp        op;
     PastaValue  *recipe;                    /* NULL for aggregate                 */
     PastaValue  *inputs[ALF_MAX_INPUTS];    /* parsed input section maps          */
     size_t       input_count;
+    char        *tags[ALF_MAX_TAGS];        /* active tags for conditional when   */
+    size_t       tag_count;
+    char        *base_dir;                /* base dir for include resolution    */
+    AlfPrecedence precedence;            /* gather: LAST_WINS or FIRST_FOUND  */
 };
 
 /* ------------------------------------------------------------------ */
@@ -40,8 +45,14 @@ static inline void alf_set_error(AlfResult *r, AlfError code, int pass,
 /*  Internal pass prototypes                                           */
 /* ------------------------------------------------------------------ */
 
+/* Pass 0: resolve @include directives (reads files, adds inputs) */
+int         alf_resolve_includes(AlfContext *ctx, AlfResult *result);
+
 /* Pass 1: resolve {variable} tokens against @vars */
 int         alf_pass1_parameterize(AlfContext *ctx, AlfResult *result);
+
+/* Pass 1.5: strip sections whose "when" tag doesn't match active tags */
+void        alf_filter_when(AlfContext *ctx);
 
 /* Pass 2: aggregate or conflate input sections */
 PastaValue *alf_pass2_merge(AlfContext *ctx, AlfResult *result);
@@ -50,6 +61,11 @@ PastaValue *alf_pass2_merge(AlfContext *ctx, AlfResult *result);
    Takes ownership of output; returns a new (or the same) value. */
 PastaValue *alf_pass3_link(PastaValue *output, AlfContext *ctx,
                             AlfResult *result);
+
+/* Pass 4: validate output against recipe field descriptors.
+   Returns 0 on success, -1 on validation failure. */
+int         alf_pass4_validate(PastaValue *output, AlfContext *ctx,
+                                AlfResult *result);
 
 /* ------------------------------------------------------------------ */
 /*  Shared utility                                                     */
