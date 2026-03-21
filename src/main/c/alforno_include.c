@@ -30,7 +30,7 @@ static char *resolve_path(const char *base_dir, const char *rel) {
     /* If rel is absolute, use as-is */
     if (rel[0] == '/' || rel[0] == '\\' ||
         (rel[0] != '\0' && rel[1] == ':'))
-        return strdup(rel);
+        return alf_strdup(rel);
 
     size_t blen = strlen(base_dir);
     size_t rlen = strlen(rel);
@@ -142,7 +142,7 @@ static int resolve_includes_recursive(AlfContext *ctx,
         new_seen[seen_count] = path;
 
         /* Derive base dir for nested includes */
-        char *nested_base = strdup(path);
+        char *nested_base = alf_strdup(path);
         if (nested_base) {
             /* Find last separator */
             char *last_sep = NULL;
@@ -150,7 +150,7 @@ static int resolve_includes_recursive(AlfContext *ctx,
                 if (*p2 == '/' || *p2 == '\\') last_sep = p2;
             }
             if (last_sep) *last_sep = '\0';
-            else { free(nested_base); nested_base = strdup("."); }
+            else { free(nested_base); nested_base = alf_strdup("."); }
         }
 
         if (resolve_includes_recursive(ctx, parsed, nested_base ? nested_base : ".",

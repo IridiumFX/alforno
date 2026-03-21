@@ -200,7 +200,7 @@ ALF_API int alf_set_base_dir(AlfContext *ctx, const char *dir,
         return -1;
     }
     free(ctx->base_dir);
-    ctx->base_dir = dir ? strdup(dir) : NULL;
+    ctx->base_dir = dir ? alf_strdup(dir) : NULL;
     if (dir && !ctx->base_dir) {
         alf_set_error(result, ALF_ERR_ALLOC, 0, NULL, "allocation failed");
         return -1;
@@ -248,7 +248,7 @@ ALF_API int alf_set_tags(AlfContext *ctx, const char **tags, size_t count,
 
     size_t n = count < ALF_MAX_TAGS ? count : ALF_MAX_TAGS;
     for (size_t i = 0; i < n; i++) {
-        ctx->tags[i] = strdup(tags[i]);
+        ctx->tags[i] = alf_strdup(tags[i]);
         if (!ctx->tags[i]) {
             alf_set_error(result, ALF_ERR_ALLOC, 0, NULL, "allocation failed");
             return -1;
