@@ -76,6 +76,13 @@ typedef BastaResult  PastaResult;
 #define pasta_push            basta_push
 #define pasta_set             basta_set
 
+/* ---- Number format ---- */
+#define PASTA_NUM_DEC           BASTA_NUM_DEC
+#define PASTA_NUM_HEX           BASTA_NUM_HEX
+#define PASTA_NUM_BIN           BASTA_NUM_BIN
+#define pasta_new_number_fmt    basta_new_number_fmt
+#define pasta_get_number_fmt    basta_get_number_fmt
+
 /* ---- Blob support (Basta only) ---- */
 #define ALF_HAS_BLOB  1
 #define PASTA_BLOB    BASTA_BLOB
