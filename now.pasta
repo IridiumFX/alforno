@@ -6,5 +6,5 @@
   sources:  { dir: "src/main/c", headers: "src/main/h" },
   compile:  { std: "c11", warnings: ["Wall", "Wextra"], includes: ["src/main/c"] },
   link:     { output: "shared" },
-  vendored: ["../pasta"]
+  
 }
