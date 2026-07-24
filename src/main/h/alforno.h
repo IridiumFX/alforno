@@ -66,7 +66,7 @@ typedef enum {
 
 typedef struct {
     AlfError code;
-    int      pass;          /* 0=setup 1=parameterize 2=merge 3=link */
+    int      pass;          /* 0=setup 1=param 2=when 3=merge 4=link 5=validate */
     char     section[64];   /* section name if relevant, else empty   */
     char     message[256];
 } AlfResult;

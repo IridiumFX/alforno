@@ -451,7 +451,7 @@ static void test_conflate_missing_consumes_error(void) {
     PastaValue *out = run_conflate(recipe, srcs, 1, &r);
     ASSERT(out == NULL, "returns NULL");
     ASSERT(r.code == ALF_ERR_MISSING_CONSUMES, "missing consumes error");
-    ASSERT(r.pass == 2, "error in pass 2");
+    ASSERT(r.pass == 3, "error in pass 3");
     printf("    error: %s\n", r.message);
 
     SUITE_OK();
@@ -602,7 +602,7 @@ static void test_link_cycle_error(void) {
     PastaValue *out = run_aggregate(srcs, 2, &r);
     ASSERT(out == NULL, "returns NULL");
     ASSERT(r.code == ALF_ERR_CYCLE, "cycle error");
-    ASSERT(r.pass == 3, "error in pass 3");
+    ASSERT(r.pass == 4, "error in pass 4");
     printf("    error: %s\n", r.message);
 
     SUITE_OK();
@@ -1400,7 +1400,7 @@ static void test_conflate_collect_bad_strategy(void) {
     PastaValue *out = run_conflate(recipe, srcs, 1, &r);
     ASSERT(out == NULL, "returns NULL");
     ASSERT(r.code == ALF_ERR_BAD_RECIPE, "bad recipe error");
-    ASSERT(r.pass == 2, "error in pass 2");
+    ASSERT(r.pass == 3, "error in pass 3");
     printf("    error: %s\n", r.message);
 
     SUITE_OK();
@@ -2455,7 +2455,7 @@ static void test_validate_required_missing(void) {
     PastaValue *out = run_conflate(recipe, srcs, 1, &r);
     ASSERT(out == NULL, "process fails");
     ASSERT(r.code == ALF_ERR_VALIDATION, "validation error");
-    ASSERT(r.pass == 4, "pass 4");
+    ASSERT(r.pass == 5, "pass 5");
     printf("    error: %s\n", r.message);
     SUITE_OK();
 }

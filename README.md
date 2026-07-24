@@ -2,7 +2,7 @@
 
 A C library for merging and composing [Pasta](https://github.com/IridiumFX/Pasta) configuration files.
 
-Alforno (*al forno* — Italian for "baked") takes one or more input pastlets and produces a single output pastlet through a three-pass pipeline: **parameterize**, **merge**, **link**.
+Alforno (*al forno* — Italian for "baked") takes one or more input pastlets and produces a single output pastlet through a fixed multi-pass pipeline — at its core **parameterize → merge → link**, with include resolution, conditional filtering, and validation around them.
 
 ## Operations
 

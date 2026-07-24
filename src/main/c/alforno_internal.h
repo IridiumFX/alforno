@@ -62,20 +62,20 @@ int         alf_resolve_includes(AlfContext *ctx, AlfResult *result);
 /* Pass 1: resolve {variable} tokens against @vars */
 int         alf_pass1_parameterize(AlfContext *ctx, AlfResult *result);
 
-/* Pass 1.5: strip sections whose "when" tag doesn't match active tags */
+/* Pass 2: strip sections whose "when" tag doesn't match active tags */
 void        alf_filter_when(AlfContext *ctx);
 
-/* Pass 2: aggregate or conflate input sections */
-PastaValue *alf_pass2_merge(AlfContext *ctx, AlfResult *result);
+/* Pass 3: aggregate or conflate input sections */
+PastaValue *alf_pass3_merge(AlfContext *ctx, AlfResult *result);
 
-/* Pass 3: replace "@section" link strings with embedded containers.
+/* Pass 4: replace "@section" link strings with embedded containers.
    Takes ownership of output; returns a new (or the same) value. */
-PastaValue *alf_pass3_link(PastaValue *output, AlfContext *ctx,
+PastaValue *alf_pass4_link(PastaValue *output, AlfContext *ctx,
                             AlfResult *result);
 
-/* Pass 4: validate output against recipe field descriptors.
+/* Pass 5: validate output against recipe field descriptors.
    Returns 0 on success, -1 on validation failure. */
-int         alf_pass4_validate(PastaValue *output, AlfContext *ctx,
+int         alf_pass5_validate(PastaValue *output, AlfContext *ctx,
                                 AlfResult *result);
 
 /* ------------------------------------------------------------------ */

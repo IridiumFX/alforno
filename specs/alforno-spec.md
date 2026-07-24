@@ -63,7 +63,7 @@ All string values across all input pastlets are scanned for `{variable}` tokens.
 - An unresolved variable is a **hard error**.
 - `@vars` is consumed and does not appear in the output.
 
-### Pass 1.5 — Conditional Filtering (`when`)
+### Pass 2 — Conditional Filtering (`when`)
 
 After parameterization, sections containing a `when` key are evaluated against the active tag set. A section is included only if at least one of its `when` tags matches an active tag. Sections without `when` are always included. The `when` key is stripped from output. If no tags are set, all `when`-guarded sections are excluded.
 
@@ -81,7 +81,7 @@ After parameterization, sections containing a `when` key are evaluated against t
 }
 ```
 
-### Pass 2 — Merge
+### Pass 3 — Merge
 
 Input pastlets are processed in declaration order. For each named section, all definitions across all inputs are merged with **last-write-wins** semantics. The two operations differ in what they do with the merged result:
 
@@ -90,21 +90,51 @@ Input pastlets are processed in declaration order. For each named section, all d
 
 In both cases, input order is the sole precedence rule: a later file overrides an earlier one for any given field.
 
-### Pass 3 — Link
+### Pass 4 — Link
 
 After the merge pass, alforno scans all string values in the output tree. Any value matching `"@name"` where `@name` is a section present in the resolved output or in any input pastlet is replaced by embedding that section's container at the field position.
 
 Link lookup order:
-1. Resolved output sections (produced by Pass 2)
+1. Resolved output sections (produced by Pass 3)
 2. Any section present in any input pastlet
 
 A missing link target is a **hard error**.
 
-### Pass 4 — Validate (conflate only)
+### Pass 5 — Validate (conflate only)
 
 If the recipe contains field descriptors with `"required"` or `"optional"` keywords, alforno validates the output against these constraints. A missing required field or a type mismatch is a **hard error**. This pass runs only for `conflate` operations with a recipe.
 
 Links are resolved in topological order. If section `@A` contains a link to `@B`, and `@B` is itself a merged output section, `@B` is fully resolved before `@A`'s link is satisfied. A cycle in the link graph is a **hard error** reported before any processing begins.
+
+### Pass 6 — Prune / Filter
+
+The final pass trims the output tree with **selectors**, producing a task-specific view of an otherwise complete document. It runs after Link and Validate, so selectors operate on the fully resolved, validated tree — and a section that was embedded elsewhere by a Pass 4 link keeps that embedded copy; only its own top-level entry is affected.
+
+Two complementary operations, applied in this order when both are set:
+
+- **filter** (keep-list) — retain only the selected sections and paths (plus the ancestors needed to reach them); everything else is dropped. An empty filter set means "keep everything."
+- **prune** (drop-list) — remove the selected sections and paths together with their subtrees. A selector that matches nothing is a no-op.
+
+`filter` and `prune` are duals: filtering to a set `S` is equivalent to pruning the complement of `S`.
+
+**Selectors** are anchored on a section and drill down by `/`:
+
+```
+@server                the whole @server section
+@server/tls            the `tls` key within @server
+@server/tls/cert       a nested key
+```
+
+`/` separates path segments; a segment is label text. Because `/` is not a labelchar, a segment may itself contain `.` without ambiguity (e.g. `@server/db.host`). A selector that does not begin with `@` is a **hard error**.
+
+Selectors are supplied primarily at invocation (`alf_set_prune` / `alf_set_filter`) — the task-specific case, the same document trimmed differently per consumer. A document that should *always* be trimmed the same way may instead carry a reserved directive section (`@prune` / `@filter`, an array of selector strings, consumed like `@include`/`@vars` and never written to output). When both forms are present, their selector lists are concatenated.
+
+```
+@prune  [ "@secrets", "@server/debug" ]
+@filter [ "@server", "@db" ]
+```
+
+Prune and filter apply to any operation (`aggregate`, `conflate`, `gather`); they trim the finished artifact and do not change how it was built.
 
 ---
 
@@ -113,8 +143,9 @@ Links are resolved in topological order. If section `@A` contains a link to `@B`
 When built against Basta (`ALF_USE_BASTA`), alforno accepts inputs containing binary blob values. Blobs are **opaque leaf values** — they are never interpreted, traversed, or modified by any pass:
 
 - **Pass 1 (Parameterize)** — blobs are cloned as-is. No `{variable}` scanning occurs inside a blob.
-- **Pass 2 (Merge)** — blobs participate in merge like any other scalar value. With `"replace"`, the last blob wins. With `"collect"`, blobs are collected into arrays alongside other values.
-- **Pass 3 (Link)** — blobs are cloned as-is. No label-ref resolution occurs inside a blob.
+- **Pass 3 (Merge)** — blobs participate in merge like any other scalar value. With `"replace"`, the last blob wins. With `"collect"`, blobs are collected into arrays alongside other values.
+- **Pass 4 (Link)** — blobs are cloned as-is. No label-ref resolution occurs inside a blob.
+- **Pass 6 (Prune / Filter)** — a blob is trimmed like any other leaf: a selector may drop or keep the key that holds it, but blob content is never inspected.
 
 A blob is structurally equivalent to a string or number for merging purposes: it is an atomic, indivisible value. Alforno never reads, writes, or allocates blob content beyond cloning.
 
@@ -160,7 +191,7 @@ An unknown merge strategy is a hard error.
 
 ### Field Descriptors (Validation)
 
-Field descriptor values in the recipe can optionally carry validation semantics. A descriptor matching the format `"required <type>"` or `"optional <type>"` enables post-processing validation (Pass 4):
+Field descriptor values in the recipe can optionally carry validation semantics. A descriptor matching the format `"required <type>"` or `"optional <type>"` enables post-processing validation (Pass 5):
 
 - `"required string"` — field must be present and be a string.
 - `"optional number"` — field may be absent; if present, must be a number.
@@ -181,12 +212,13 @@ Field descriptor values in the recipe can optionally carry validation semantics.
 | Include depth exceeded | Hard error | 0 |
 | Unresolved variable `{x}` | Hard error | 1 |
 | `@vars` section is not a map | Hard error | 1 |
-| `consumes` missing or empty in recipe section | Hard error | 2 |
-| Unknown `merge` strategy | Hard error | 2 |
-| Dependency cycle in link graph | Hard error | pre-3 |
-| Missing link target `@section_name` | Hard error | 3 |
-| Required field missing | Hard error | 4 |
-| Field type mismatch | Hard error | 4 |
+| `consumes` missing or empty in recipe section | Hard error | 3 |
+| Unknown `merge` strategy | Hard error | 3 |
+| Dependency cycle in link graph | Hard error | pre-4 |
+| Missing link target `@section_name` | Hard error | 4 |
+| Required field missing | Hard error | 5 |
+| Field type mismatch | Hard error | 5 |
+| Malformed prune/filter selector (no leading `@`) | Hard error | 6 |
 | Scatter file write failure | Hard error | output |
 
 ---
@@ -206,6 +238,8 @@ The following section names are reserved across all pastlets:
 
 - `@vars`
 - `@include`
+- `@prune`
+- `@filter`
 
 ---
 
@@ -232,6 +266,13 @@ int alf_set_precedence(AlfContext *ctx, AlfPrecedence prec, AlfResult *result);
 
 /* Set active tags for conditional section filtering (when) */
 int alf_set_tags(AlfContext *ctx, const char **tags, size_t count, AlfResult *result);
+
+/* Set prune selectors: remove these sections/paths from the output (Pass 6).
+   A selector matching nothing is a no-op. */
+int alf_set_prune(AlfContext *ctx, const char **selectors, size_t count, AlfResult *result);
+
+/* Set filter selectors: keep only these sections/paths in the output (Pass 6). */
+int alf_set_filter(AlfContext *ctx, const char **selectors, size_t count, AlfResult *result);
 
 /* Set the base directory for resolving @include paths */
 int alf_set_base_dir(AlfContext *ctx, const char *dir, AlfResult *result);

@@ -1,7 +1,7 @@
 #include "alforno_internal.h"
 
 /* ------------------------------------------------------------------ */
-/*  Pass 4: Recipe descriptor validation                               */
+/*  Pass 5: Recipe descriptor validation                               */
 /* ------------------------------------------------------------------ */
 
 /*
@@ -79,7 +79,7 @@ static const char *type_name(int t) {
     }
 }
 
-int alf_pass4_validate(PastaValue *output, AlfContext *ctx,
+int alf_pass5_validate(PastaValue *output, AlfContext *ctx,
                          AlfResult *result) {
     /* Validation only applies to conflate with a recipe */
     if (ctx->op != ALF_CONFLATE || !ctx->recipe)
@@ -117,7 +117,7 @@ int alf_pass4_validate(PastaValue *output, AlfContext *ctx,
                     snprintf(msg, sizeof(msg),
                              "required field '%s' missing in section '%s'",
                              field, secname);
-                    alf_set_error(result, ALF_ERR_VALIDATION, 4, secname, msg);
+                    alf_set_error(result, ALF_ERR_VALIDATION, 5, secname, msg);
                     return -1;
                 }
                 continue;
@@ -130,7 +130,7 @@ int alf_pass4_validate(PastaValue *output, AlfContext *ctx,
                          field, secname,
                          type_name(expected_type),
                          type_name((int)pasta_type(fval)));
-                alf_set_error(result, ALF_ERR_VALIDATION, 4, secname, msg);
+                alf_set_error(result, ALF_ERR_VALIDATION, 5, secname, msg);
                 return -1;
             }
         }

@@ -73,7 +73,7 @@ int alf_set_tags(AlfContext *ctx, const char **tags, size_t count, AlfResult *re
 - Section is included only if at least one `when` tag is in the active set
 - Sections without `when` are always included
 - `when` is stripped from output
-- Evaluated before Pass 2 (merge), after Pass 1 (parameterize)
+- Evaluated as Pass 2, after Pass 1 (parameterize) and before Pass 3 (merge)
 - Add `ALF_MAX_TAGS` constant, `when` to reserved keys in spec
 
 ---
@@ -96,11 +96,11 @@ Optional post-merge validation using recipe field descriptors. Recipe descriptor
 ```
 
 **Scope:**
-- New file `alforno_validate.c` with `alf_pass4_validate()`
+- New file `alforno_validate.c` with `alf_pass5_validate()`
 - Descriptor format: `"[required|optional] [string|number|bool|array|map]"`
 - Missing required field → hard error (`ALF_ERR_VALIDATION`)
 - Type mismatch → hard error
-- Runs after Pass 3 (link), before returning output
+- Runs after Pass 4 (link), before returning output
 - Optional fields that are absent are silently accepted
 - Descriptors without recognized tokens are ignored (backward compatible)
 
@@ -196,6 +196,58 @@ PastaValue *out = alf_process(ctx, &result);
 
 ---
 
+## Feature 8: Prune / Filter (`@prune` / `@filter`)
+
+**Status:** [ ] Planned
+
+Post-pipeline trimming of the output tree, producing a task-specific view of an
+otherwise complete document. Two dual operations run as the final pass (Pass 6),
+after Link and Validate:
+
+- **prune** — drop the selected sections/paths and their subtrees (deny-list).
+- **filter** — keep only the selected sections/paths (allow-list).
+
+Unlike `conflate` (which selects during merge via a full recipe contract) or
+`when` (declarative tag gating), prune/filter are lightweight, imperative
+selectors applied to the finished tree — the missing "keep everything except X"
+capability.
+
+**Selectors** anchor on a section and drill down by `/` (a non-labelchar, so a
+segment may contain `.`): `@server`, `@server/tls`, `@server/tls/cert`.
+
+**API:**
+```c
+int alf_set_prune (AlfContext *ctx, const char **selectors, size_t count, AlfResult *result);
+int alf_set_filter(AlfContext *ctx, const char **selectors, size_t count, AlfResult *result);
+```
+
+**Directive form** (consistent with `@include` / `@vars`, consumed from output):
+```
+@prune  [ "@secrets", "@server/debug" ]
+@filter [ "@server", "@db" ]
+```
+
+**Scope:**
+- New Pass 6 in `alf_process`, after validate; new file `alforno_select.c`.
+- Selector engine generalizing the map-rebuild walk already in `alf_filter_when`.
+- filter and prune are duals (`filter(S)` == prune the complement); one engine.
+- Runs after Link, so a section linked into another keeps its embedded copy;
+  only the top-level entry is removed/kept.
+- Malformed selector (no leading `@`) → hard error; a selector matching nothing
+  is a no-op.
+- `@prune` / `@filter` reserved section names; new error code for bad selectors.
+- Update spec (Pass 6, error table, reserved sections, API sketch) and add
+  conformance-style tests.
+
+**Primary surface:** the invocation API (`alf_set_prune` / `alf_set_filter`) is
+primary — it fits the motivating case, task-specific trimming (the same
+document viewed differently per consumer), and mirrors how `alf_set_tags` drives
+`when`. The `@prune` / `@filter` directive is the secondary, data-embedded form
+for "always trim this document the same way" (mirroring the `when` key living in
+the data). Both are supported; their selector lists concatenate.
+
+---
+
 ## Implementation Order
 
 1. `alf_process_to_string()` — simplest, no dependencies
@@ -205,3 +257,4 @@ PastaValue *out = alf_process(ctx, &result);
 5. Include directive — new file, new APIs, file I/O
 6. Scatter verb — new operation mode, file output
 7. Gather verb — new operation mode, precedence switch
+8. Prune / Filter — new final pass (Pass 6), selector engine, `@prune`/`@filter`

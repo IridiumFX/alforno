@@ -367,31 +367,31 @@ ALF_API PastaValue *alf_process(AlfContext *ctx, AlfResult *result) {
         return NULL;
     }
 
-    /* Pass 1.5: conditional section filtering */
+    /* Pass 2: conditional section filtering */
     alf_filter_when(ctx);
 
-    /* Pass 2: merge */
-    PastaValue *output = alf_pass2_merge(ctx, &local);
+    /* Pass 3: merge */
+    PastaValue *output = alf_pass3_merge(ctx, &local);
     if (!output) {
         if (result) *result = local;
         return NULL;
     }
 
-    /* Pass 3: link */
-    PastaValue *linked = alf_pass3_link(output, ctx, &local);
+    /* Pass 4: link */
+    PastaValue *linked = alf_pass4_link(output, ctx, &local);
     if (!linked) {
         if (result) *result = local;
         return NULL;
     }
 
-    /* Pass 4: validate (conflate only, if recipe has descriptors) */
-    if (alf_pass4_validate(linked, ctx, &local) != 0) {
+    /* Pass 5: validate (conflate only, if recipe has descriptors) */
+    if (alf_pass5_validate(linked, ctx, &local) != 0) {
         if (result) *result = local;
         pasta_free(linked);
         return NULL;
     }
 
-    if (result) { result->code = ALF_OK; result->pass = 4; }
+    if (result) { result->code = ALF_OK; result->pass = 5; }
     return linked;
 }
 

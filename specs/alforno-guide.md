@@ -116,11 +116,11 @@ alforno conflate recipe.pasta base.pasta prod.pasta vars-prod.pasta
 
 ### How It Resolves (Production)
 
-**Pass 1 — Parameterize**
+**Parameterize**
 
 `prod.pasta @db.host` → `"db.eu-west.internal"`.
 
-**Pass 2 — Conflate**
+**Conflate**
 
 For `@app`, inputs are merged in order: base.pasta then prod.pasta. Later file wins.
 
@@ -142,7 +142,7 @@ For `@db`:
 | pool_min | 2 | — | 2 |
 | pool_max | 10 | 50 | 50 |
 
-**Pass 3 — Link**
+**Link**
 
 No `"@ref"` values in the output tree. Nothing to do.
 
@@ -318,7 +318,7 @@ alforno conflate deploy-recipe.pasta \
   --out deploy.pasta
 ```
 
-**Pass 1 — Parameterize**
+**Parameterize**
 
 `vars-prod.pasta @vars` is resolved across all inputs:
 - `@platform.version` → `"3.0.0"`
@@ -326,11 +326,11 @@ alforno conflate deploy-recipe.pasta \
 - `@network.ingress` → `"api.eu-west.example.com"`
 - `@services.image` → `"platform:3.0.0"`
 
-**Pass 2 — Conflate**
+**Conflate**
 
 `@platform`, `@network`, `@services` merged from their respective `consumes` sections. Field values are now concrete.
 
-**Pass 3 — Link**
+**Link**
 
 Alforno scans the output tree and finds two `"@ref"` values:
 - `@network.tls` = `"@tls"` → section `@tls` found in `tls-resolved.pasta`
@@ -395,21 +395,21 @@ A common pattern in a build graph: upstream nodes produce outputs via `aggregate
 ## Processing Rules Summary
 
 ```
-Pass 1 — Parameterize:
+Parameterize:
   Collect @vars from all inputs, merge last-write-wins
   Resolve {variable} in all string values
   Hard error on unresolved variable
 
-Pass 2 — Merge:
+Merge:
   Process inputs in declaration order, last-write-wins per field
   aggregate: emit all sections and fields
   conflate:  emit only sections and fields declared in recipe
 
-Pass 3 — Link:
+Link:
   Build dependency DAG from "@ref" string values
   Hard error on cycle
   Resolve in topological order:
-    look up @ref in Pass 2 output, then in inputs
+    look up @ref in the merge output, then in inputs
     embed container at field position
     hard error on missing target
 ```
