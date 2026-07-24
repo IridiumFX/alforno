@@ -185,48 +185,48 @@ void alf_filter_when(AlfContext *ctx) {
 ALF_API int alf_set_precedence(AlfContext *ctx, AlfPrecedence prec,
                                  AlfResult *result) {
     if (!ctx) {
-        alf_set_error(result, ALF_ERR_ALLOC, 0, NULL, "null context");
+        alf_set_error(result, ALF_ERR_ALLOC, ALF_PASS_SETUP, NULL, "null context");
         return -1;
     }
     ctx->precedence = prec;
-    if (result) { result->code = ALF_OK; result->pass = 0; }
+    if (result) { result->code = ALF_OK; result->pass = ALF_PASS_SETUP; }
     return 0;
 }
 
 ALF_API int alf_set_base_dir(AlfContext *ctx, const char *dir,
                                AlfResult *result) {
     if (!ctx) {
-        alf_set_error(result, ALF_ERR_ALLOC, 0, NULL, "null context");
+        alf_set_error(result, ALF_ERR_ALLOC, ALF_PASS_SETUP, NULL, "null context");
         return -1;
     }
     free(ctx->base_dir);
     ctx->base_dir = dir ? alf_strdup(dir) : NULL;
     if (dir && !ctx->base_dir) {
-        alf_set_error(result, ALF_ERR_ALLOC, 0, NULL, "allocation failed");
+        alf_set_error(result, ALF_ERR_ALLOC, ALF_PASS_SETUP, NULL, "allocation failed");
         return -1;
     }
-    if (result) { result->code = ALF_OK; result->pass = 0; }
+    if (result) { result->code = ALF_OK; result->pass = ALF_PASS_SETUP; }
     return 0;
 }
 
 ALF_API int alf_add_input_file(AlfContext *ctx, const char *path,
                                  AlfResult *result) {
     if (!ctx || !path) {
-        alf_set_error(result, ALF_ERR_PARSE, 0, NULL, "null argument");
+        alf_set_error(result, ALF_ERR_PARSE, ALF_PASS_SETUP, NULL, "null argument");
         return -1;
     }
     FILE *fp = fopen(path, "rb");
     if (!fp) {
         char msg[320];
         snprintf(msg, sizeof(msg), "cannot open file '%s'", path);
-        alf_set_error(result, ALF_ERR_INCLUDE, 0, NULL, msg);
+        alf_set_error(result, ALF_ERR_INCLUDE, ALF_PASS_SETUP, NULL, msg);
         return -1;
     }
     fseek(fp, 0, SEEK_END);
     long sz = ftell(fp);
     fseek(fp, 0, SEEK_SET);
     char *buf = (char *)malloc((size_t)sz + 1);
-    if (!buf) { fclose(fp); alf_set_error(result, ALF_ERR_ALLOC, 0, NULL, "allocation failed"); return -1; }
+    if (!buf) { fclose(fp); alf_set_error(result, ALF_ERR_ALLOC, ALF_PASS_SETUP, NULL, "allocation failed"); return -1; }
     size_t rd = fread(buf, 1, (size_t)sz, fp);
     fclose(fp);
     buf[rd] = '\0';
@@ -238,7 +238,7 @@ ALF_API int alf_add_input_file(AlfContext *ctx, const char *path,
 ALF_API int alf_set_tags(AlfContext *ctx, const char **tags, size_t count,
                            AlfResult *result) {
     if (!ctx) {
-        alf_set_error(result, ALF_ERR_ALLOC, 0, NULL, "null context");
+        alf_set_error(result, ALF_ERR_ALLOC, ALF_PASS_SETUP, NULL, "null context");
         return -1;
     }
     /* Free any previously set tags */
@@ -250,19 +250,59 @@ ALF_API int alf_set_tags(AlfContext *ctx, const char **tags, size_t count,
     for (size_t i = 0; i < n; i++) {
         ctx->tags[i] = alf_strdup(tags[i]);
         if (!ctx->tags[i]) {
-            alf_set_error(result, ALF_ERR_ALLOC, 0, NULL, "allocation failed");
+            alf_set_error(result, ALF_ERR_ALLOC, ALF_PASS_SETUP, NULL, "allocation failed");
             return -1;
         }
         ctx->tag_count++;
     }
-    if (result) { result->code = ALF_OK; result->pass = 0; }
+    if (result) { result->code = ALF_OK; result->pass = ALF_PASS_SETUP; }
     return 0;
+}
+
+/* Shared setter for the prune/filter selector lists (replaces any prior set). */
+static int alf_set_selectors(char **sel, size_t *count,
+                              const char **selectors, size_t n,
+                              AlfResult *result) {
+    for (size_t i = 0; i < *count; i++) free(sel[i]);
+    *count = 0;
+    size_t m = n < ALF_MAX_SELECTORS ? n : ALF_MAX_SELECTORS;
+    for (size_t i = 0; i < m; i++) {
+        sel[i] = alf_strdup(selectors[i]);
+        if (!sel[i]) {
+            alf_set_error(result, ALF_ERR_ALLOC, ALF_PASS_SETUP, NULL,
+                          "allocation failed");
+            return -1;
+        }
+        (*count)++;
+    }
+    if (result) { result->code = ALF_OK; result->pass = ALF_PASS_SETUP; }
+    return 0;
+}
+
+ALF_API int alf_set_prune(AlfContext *ctx, const char **selectors, size_t count,
+                            AlfResult *result) {
+    if (!ctx) {
+        alf_set_error(result, ALF_ERR_ALLOC, ALF_PASS_SETUP, NULL, "null context");
+        return -1;
+    }
+    return alf_set_selectors(ctx->prune_sel, &ctx->prune_count,
+                             selectors, count, result);
+}
+
+ALF_API int alf_set_filter(AlfContext *ctx, const char **selectors, size_t count,
+                             AlfResult *result) {
+    if (!ctx) {
+        alf_set_error(result, ALF_ERR_ALLOC, ALF_PASS_SETUP, NULL, "null context");
+        return -1;
+    }
+    return alf_set_selectors(ctx->filter_sel, &ctx->filter_count,
+                             selectors, count, result);
 }
 
 ALF_API AlfContext *alf_create(AlfOp op, AlfResult *result) {
     AlfContext *ctx = (AlfContext *)calloc(1, sizeof(AlfContext));
     if (!ctx) {
-        alf_set_error(result, ALF_ERR_ALLOC, 0, NULL, "allocation failed");
+        alf_set_error(result, ALF_ERR_ALLOC, ALF_PASS_SETUP, NULL, "allocation failed");
         return NULL;
     }
     ctx->op          = op;
@@ -280,7 +320,7 @@ ALF_API AlfContext *alf_create(AlfOp op, AlfResult *result) {
 ALF_API int alf_set_recipe(AlfContext *ctx, const char *src, size_t len,
                              AlfResult *result) {
     if (!ctx || !src) {
-        alf_set_error(result, ALF_ERR_PARSE, 0, NULL, "null argument");
+        alf_set_error(result, ALF_ERR_PARSE, ALF_PASS_SETUP, NULL, "null argument");
         return -1;
     }
     if (ctx->op != ALF_CONFLATE) return 0; /* recipe ignored for aggregate */
@@ -291,30 +331,30 @@ ALF_API int alf_set_recipe(AlfContext *ctx, const char *src, size_t len,
         char msg[320];
         snprintf(msg, sizeof(msg), "recipe parse error at %d:%d: %s",
                  pr.line, pr.col, pr.message);
-        alf_set_error(result, ALF_ERR_PARSE, 0, NULL, msg);
+        alf_set_error(result, ALF_ERR_PARSE, ALF_PASS_SETUP, NULL, msg);
         pasta_free(v);
         return -1;
     }
     if (pasta_type(v) != PASTA_MAP || !pr.sections) {
-        alf_set_error(result, ALF_ERR_NOT_SECTIONS, 0, NULL,
+        alf_set_error(result, ALF_ERR_NOT_SECTIONS, ALF_PASS_SETUP, NULL,
                       "recipe must be a named-section file");
         pasta_free(v);
         return -1;
     }
     pasta_free(ctx->recipe);
     ctx->recipe = v;
-    if (result) { result->code = ALF_OK; result->pass = 0; }
+    if (result) { result->code = ALF_OK; result->pass = ALF_PASS_SETUP; }
     return 0;
 }
 
 ALF_API int alf_add_input(AlfContext *ctx, const char *src, size_t len,
                             AlfResult *result) {
     if (!ctx || !src) {
-        alf_set_error(result, ALF_ERR_PARSE, 0, NULL, "null argument");
+        alf_set_error(result, ALF_ERR_PARSE, ALF_PASS_SETUP, NULL, "null argument");
         return -1;
     }
     if (ctx->input_count >= ALF_MAX_INPUTS) {
-        alf_set_error(result, ALF_ERR_ALLOC, 0, NULL, "too many inputs");
+        alf_set_error(result, ALF_ERR_ALLOC, ALF_PASS_SETUP, NULL, "too many inputs");
         return -1;
     }
 
@@ -324,24 +364,24 @@ ALF_API int alf_add_input(AlfContext *ctx, const char *src, size_t len,
         char msg[320];
         snprintf(msg, sizeof(msg), "input parse error at %d:%d: %s",
                  pr.line, pr.col, pr.message);
-        alf_set_error(result, ALF_ERR_PARSE, 0, NULL, msg);
+        alf_set_error(result, ALF_ERR_PARSE, ALF_PASS_SETUP, NULL, msg);
         pasta_free(v);
         return -1;
     }
     if (pasta_type(v) != PASTA_MAP || !pr.sections) {
-        alf_set_error(result, ALF_ERR_NOT_SECTIONS, 0, NULL,
+        alf_set_error(result, ALF_ERR_NOT_SECTIONS, ALF_PASS_SETUP, NULL,
                       "input must be a named-section file");
         pasta_free(v);
         return -1;
     }
     ctx->inputs[ctx->input_count++] = v;
-    if (result) { result->code = ALF_OK; result->pass = 0; }
+    if (result) { result->code = ALF_OK; result->pass = ALF_PASS_SETUP; }
     return 0;
 }
 
 ALF_API PastaValue *alf_process(AlfContext *ctx, AlfResult *result) {
     if (!ctx) {
-        alf_set_error(result, ALF_ERR_ALLOC, 0, NULL, "null context");
+        alf_set_error(result, ALF_ERR_ALLOC, ALF_PASS_SETUP, NULL, "null context");
         return NULL;
     }
 
@@ -370,6 +410,10 @@ ALF_API PastaValue *alf_process(AlfContext *ctx, AlfResult *result) {
     /* Pass 2: conditional section filtering */
     alf_filter_when(ctx);
 
+    /* Collect @prune / @filter directive selectors and strip those sections
+       from the inputs (so they never reach the merged output). */
+    alf_collect_select_directives(ctx, &local);
+
     /* Pass 3: merge */
     PastaValue *output = alf_pass3_merge(ctx, &local);
     if (!output) {
@@ -391,8 +435,15 @@ ALF_API PastaValue *alf_process(AlfContext *ctx, AlfResult *result) {
         return NULL;
     }
 
-    if (result) { result->code = ALF_OK; result->pass = 5; }
-    return linked;
+    /* Pass 6: prune / filter (takes ownership of linked) */
+    PastaValue *selected = alf_pass6_select(linked, ctx, &local);
+    if (!selected) {
+        if (result) *result = local;
+        return NULL;   /* alf_pass6_select already freed the tree */
+    }
+
+    if (result) { result->code = ALF_OK; result->pass = ALF_PASS_SELECT; }
+    return selected;
 }
 
 ALF_API char *alf_process_to_string(AlfContext *ctx, int flags,
@@ -403,7 +454,7 @@ ALF_API char *alf_process_to_string(AlfContext *ctx, int flags,
     char *str = pasta_write(output, flags);
     pasta_free(output);
     if (!str) {
-        alf_set_error(result, ALF_ERR_ALLOC, 0, NULL, "serialization failed");
+        alf_set_error(result, ALF_ERR_ALLOC, ALF_PASS_SETUP, NULL, "serialization failed");
         return NULL;
     }
     return str;
@@ -412,7 +463,7 @@ ALF_API char *alf_process_to_string(AlfContext *ctx, int flags,
 ALF_API int alf_scatter_to_dir(AlfContext *ctx, const char *output_dir,
                                  const char *ext, AlfResult *result) {
     if (!ctx || !output_dir) {
-        alf_set_error(result, ALF_ERR_ALLOC, 0, NULL, "null argument");
+        alf_set_error(result, ALF_ERR_ALLOC, ALF_PASS_SETUP, NULL, "null argument");
         return -1;
     }
     if (!ext) ext = ".pasta";
@@ -421,7 +472,7 @@ ALF_API int alf_scatter_to_dir(AlfContext *ctx, const char *output_dir,
     if (!output) return -1;
 
     if (pasta_type(output) != PASTA_MAP) {
-        alf_set_error(result, ALF_ERR_PARSE, 0, NULL, "output is not a map");
+        alf_set_error(result, ALF_ERR_PARSE, ALF_PASS_SETUP, NULL, "output is not a map");
         pasta_free(output);
         return -1;
     }
@@ -434,21 +485,21 @@ ALF_API int alf_scatter_to_dir(AlfContext *ctx, const char *output_dir,
         /* Build a single-section named-section file */
         PastaValue *file_map = pasta_new_map();
         if (!file_map) {
-            alf_set_error(result, ALF_ERR_ALLOC, 0, secname, "allocation failed");
+            alf_set_error(result, ALF_ERR_ALLOC, ALF_PASS_SETUP, secname, "allocation failed");
             pasta_free(output);
             return -1;
         }
         PastaValue *clone = alf_value_clone(secval);
         if (!clone || pasta_set(file_map, secname, clone)) {
             pasta_free(clone); pasta_free(file_map); pasta_free(output);
-            alf_set_error(result, ALF_ERR_ALLOC, 0, secname, "allocation failed");
+            alf_set_error(result, ALF_ERR_ALLOC, ALF_PASS_SETUP, secname, "allocation failed");
             return -1;
         }
 
         char *serialized = pasta_write(file_map, PASTA_PRETTY | PASTA_SECTIONS);
         pasta_free(file_map);
         if (!serialized) {
-            alf_set_error(result, ALF_ERR_ALLOC, 0, secname, "serialization failed");
+            alf_set_error(result, ALF_ERR_ALLOC, ALF_PASS_SETUP, secname, "serialization failed");
             pasta_free(output);
             return -1;
         }
@@ -460,7 +511,7 @@ ALF_API int alf_scatter_to_dir(AlfContext *ctx, const char *output_dir,
         char *path = (char *)malloc(dlen + 1 + nlen + elen + 1);
         if (!path) {
             free(serialized); pasta_free(output);
-            alf_set_error(result, ALF_ERR_ALLOC, 0, NULL, "allocation failed");
+            alf_set_error(result, ALF_ERR_ALLOC, ALF_PASS_SETUP, NULL, "allocation failed");
             return -1;
         }
         memcpy(path, output_dir, dlen);
@@ -474,7 +525,7 @@ ALF_API int alf_scatter_to_dir(AlfContext *ctx, const char *output_dir,
         if (!fp) {
             char msg[320];
             snprintf(msg, sizeof(msg), "cannot write file '%s'", path);
-            alf_set_error(result, ALF_ERR_IO, 0, secname, msg);
+            alf_set_error(result, ALF_ERR_IO, ALF_PASS_SETUP, secname, msg);
             free(path); free(serialized); pasta_free(output);
             return -1;
         }
@@ -497,6 +548,10 @@ ALF_API void alf_free(AlfContext *ctx) {
         pasta_free(ctx->inputs[i]);
     for (size_t i = 0; i < ctx->tag_count; i++)
         free(ctx->tags[i]);
+    for (size_t i = 0; i < ctx->prune_count; i++)
+        free(ctx->prune_sel[i]);
+    for (size_t i = 0; i < ctx->filter_count; i++)
+        free(ctx->filter_sel[i]);
     free(ctx->base_dir);
     free(ctx);
 }

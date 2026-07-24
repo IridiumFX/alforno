@@ -68,13 +68,13 @@ static int resolve_includes_recursive(AlfContext *ctx,
     if (!inc) return 0;
 
     if (pasta_type(inc) != PASTA_ARRAY) {
-        alf_set_error(result, ALF_ERR_INCLUDE, 0, "include",
+        alf_set_error(result, ALF_ERR_INCLUDE, ALF_PASS_SETUP, "include",
                       "@include must be an array of file paths");
         return -1;
     }
 
     if (seen_count >= ALF_MAX_INCLUDE_DEPTH) {
-        alf_set_error(result, ALF_ERR_INCLUDE, 0, "include",
+        alf_set_error(result, ALF_ERR_INCLUDE, ALF_PASS_SETUP, "include",
                       "include depth limit exceeded");
         return -1;
     }
@@ -87,7 +87,7 @@ static int resolve_includes_recursive(AlfContext *ctx,
 
         char *path = resolve_path(base_dir, rel);
         if (!path) {
-            alf_set_error(result, ALF_ERR_ALLOC, 0, NULL, "allocation failed");
+            alf_set_error(result, ALF_ERR_ALLOC, ALF_PASS_SETUP, NULL, "allocation failed");
             return -1;
         }
 
@@ -97,7 +97,7 @@ static int resolve_includes_recursive(AlfContext *ctx,
                 char msg[320];
                 snprintf(msg, sizeof(msg),
                          "circular include detected: '%s'", rel);
-                alf_set_error(result, ALF_ERR_INCLUDE, 0, "include", msg);
+                alf_set_error(result, ALF_ERR_INCLUDE, ALF_PASS_SETUP, "include", msg);
                 free(path);
                 return -1;
             }
@@ -109,7 +109,7 @@ static int resolve_includes_recursive(AlfContext *ctx,
         if (!src) {
             char msg[320];
             snprintf(msg, sizeof(msg), "cannot read include file '%s'", rel);
-            alf_set_error(result, ALF_ERR_INCLUDE, 0, "include", msg);
+            alf_set_error(result, ALF_ERR_INCLUDE, ALF_PASS_SETUP, "include", msg);
             free(path);
             return -1;
         }
@@ -122,13 +122,13 @@ static int resolve_includes_recursive(AlfContext *ctx,
             snprintf(msg, sizeof(msg),
                      "parse error in include '%s' at %d:%d: %s",
                      rel, pr.line, pr.col, pr.message);
-            alf_set_error(result, ALF_ERR_INCLUDE, 0, "include", msg);
+            alf_set_error(result, ALF_ERR_INCLUDE, ALF_PASS_SETUP, "include", msg);
             pasta_free(parsed);
             free(path);
             return -1;
         }
         if (pasta_type(parsed) != PASTA_MAP || !pr.sections) {
-            alf_set_error(result, ALF_ERR_NOT_SECTIONS, 0, "include",
+            alf_set_error(result, ALF_ERR_NOT_SECTIONS, ALF_PASS_SETUP, "include",
                           "included file must be a named-section file");
             pasta_free(parsed);
             free(path);
@@ -164,7 +164,7 @@ static int resolve_includes_recursive(AlfContext *ctx,
 
         /* Add as input (before current inputs that come after includes) */
         if (ctx->input_count >= ALF_MAX_INPUTS) {
-            alf_set_error(result, ALF_ERR_ALLOC, 0, NULL, "too many inputs");
+            alf_set_error(result, ALF_ERR_ALLOC, ALF_PASS_SETUP, NULL, "too many inputs");
             pasta_free(parsed);
             free(path);
             return -1;
@@ -202,7 +202,7 @@ int alf_resolve_includes(AlfContext *ctx, AlfResult *result) {
         /* Strip @include from this input */
         PastaValue *stripped = pasta_new_map();
         if (!stripped) {
-            alf_set_error(result, ALF_ERR_ALLOC, 0, NULL, "allocation failed");
+            alf_set_error(result, ALF_ERR_ALLOC, ALF_PASS_SETUP, NULL, "allocation failed");
             return -1;
         }
         for (size_t j = 0; j < pasta_count(inp); j++) {
@@ -211,7 +211,7 @@ int alf_resolve_includes(AlfContext *ctx, AlfResult *result) {
             PastaValue *c = alf_value_clone(pasta_map_value(inp, j));
             if (!c || pasta_set(stripped, key, c)) {
                 pasta_free(c); pasta_free(stripped);
-                alf_set_error(result, ALF_ERR_ALLOC, 0, NULL, "allocation failed");
+                alf_set_error(result, ALF_ERR_ALLOC, ALF_PASS_SETUP, NULL, "allocation failed");
                 return -1;
             }
         }

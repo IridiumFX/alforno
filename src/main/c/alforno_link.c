@@ -168,7 +168,7 @@ PastaValue *alf_pass4_link(PastaValue *output, AlfContext *ctx,
     for (size_t i = 0; i < nsec; i++) {
         if (g.state[i] == 0) {
             if (topo_dfs(&g, (int)i)) {
-                alf_set_error(result, ALF_ERR_CYCLE, 4, NULL,
+                alf_set_error(result, ALF_ERR_CYCLE, ALF_PASS_LINK, NULL,
                               "cycle detected in section link graph");
                 pasta_free(output);
                 return NULL;
@@ -183,7 +183,7 @@ PastaValue *alf_pass4_link(PastaValue *output, AlfContext *ctx,
     lctx.input_count = ctx->input_count;
     lctx.resolved    = pasta_new_map();
     if (!lctx.resolved) {
-        alf_set_error(result, ALF_ERR_ALLOC, 4, NULL, "allocation failed");
+        alf_set_error(result, ALF_ERR_ALLOC, ALF_PASS_LINK, NULL, "allocation failed");
         pasta_free(output);
         return NULL;
     }
@@ -196,7 +196,7 @@ PastaValue *alf_pass4_link(PastaValue *output, AlfContext *ctx,
 
         PastaValue *resolved_sec = resolve_links_value(secval, &lctx);
         if (!resolved_sec) {
-            alf_set_error(result, ALF_ERR_ALLOC, 4, secname, "allocation failed");
+            alf_set_error(result, ALF_ERR_ALLOC, ALF_PASS_LINK, secname, "allocation failed");
             pasta_free(lctx.resolved);
             pasta_free(output);
             return NULL;
@@ -209,7 +209,7 @@ PastaValue *alf_pass4_link(PastaValue *output, AlfContext *ctx,
             pasta_free(resolved_sec);
             pasta_free(lctx.resolved);
             pasta_free(output);
-            alf_set_error(result, ALF_ERR_ALLOC, 4, secname, "allocation failed");
+            alf_set_error(result, ALF_ERR_ALLOC, ALF_PASS_LINK, secname, "allocation failed");
             return NULL;
         }
         pasta_free(resolved_sec);

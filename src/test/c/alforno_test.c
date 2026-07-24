@@ -2573,6 +2573,110 @@ static void test_process_to_string_error(void) {
 }
 
 /* ================================================================== */
+/*  PRUNE / FILTER (Pass 6)                                            */
+/* ================================================================== */
+
+static void test_prune_filter(void) {
+    SUITE("Prune / Filter (Pass 6)");
+    AlfResult r;
+    const char *DOC =
+        "@server { host: \"h\", port: 8080, tls: { cert: \"c\", key: \"k\" } }\n"
+        "@secrets { token: \"xyz\" }\n"
+        "@db { name: \"d\" }\n";
+
+    /* prune a whole section and a nested path */
+    {
+        AlfContext *ctx = alf_create(ALF_AGGREGATE, &r);
+        const char *pr[] = { "@secrets", "@server/tls/key" };
+        alf_set_prune(ctx, pr, 2, &r);
+        alf_add_input(ctx, DOC, strlen(DOC), &r);
+        PastaValue *o = alf_process(ctx, &r);
+        ASSERT(o != NULL, "prune process ok");
+        ASSERT(o && pasta_map_get(o, "secrets") == NULL, "@secrets pruned");
+        ASSERT(o && pasta_map_get(o, "db") != NULL, "@db kept");
+        const PastaValue *tls = o ? pasta_map_get(pasta_map_get(o, "server"), "tls") : NULL;
+        ASSERT(tls && pasta_map_get(tls, "key") == NULL, "server/tls/key pruned");
+        ASSERT(tls && pasta_map_get(tls, "cert") != NULL, "server/tls/cert kept");
+        pasta_free(o); alf_free(ctx);
+    }
+
+    /* filter: keep only selected paths (plus ancestors) */
+    {
+        AlfContext *ctx = alf_create(ALF_AGGREGATE, &r);
+        const char *fl[] = { "@server/port", "@db" };
+        alf_set_filter(ctx, fl, 2, &r);
+        alf_add_input(ctx, DOC, strlen(DOC), &r);
+        PastaValue *o = alf_process(ctx, &r);
+        ASSERT(o != NULL && pasta_count(o) == 2, "only 2 sections kept");
+        ASSERT(o && pasta_map_get(o, "secrets") == NULL, "@secrets dropped");
+        const PastaValue *srv = o ? pasta_map_get(o, "server") : NULL;
+        ASSERT(srv && pasta_count(srv) == 1, "server has only port");
+        ASSERT(srv && pasta_map_get(srv, "port") != NULL, "server/port kept");
+        ASSERT(srv && pasta_map_get(srv, "host") == NULL, "server/host dropped");
+        ASSERT(o && pasta_map_get(o, "db") != NULL, "@db kept whole");
+        pasta_free(o); alf_free(ctx);
+    }
+
+    /* malformed selector (no leading @) -> hard error at pass 6 */
+    {
+        AlfContext *ctx = alf_create(ALF_AGGREGATE, &r);
+        const char *pr[] = { "server" };
+        alf_set_prune(ctx, pr, 1, &r);
+        alf_add_input(ctx, DOC, strlen(DOC), &r);
+        PastaValue *o = alf_process(ctx, &r);
+        ASSERT(o == NULL, "malformed selector fails");
+        ASSERT(r.code == ALF_ERR_BAD_SELECTOR, "bad-selector error code");
+        ASSERT(r.pass == 6, "error at pass 6");
+        pasta_free(o); alf_free(ctx);
+    }
+
+    /* a selector matching nothing is a no-op */
+    {
+        AlfContext *ctx = alf_create(ALF_AGGREGATE, &r);
+        const char *pr[] = { "@nope", "@server/nope" };
+        alf_set_prune(ctx, pr, 2, &r);
+        alf_add_input(ctx, DOC, strlen(DOC), &r);
+        PastaValue *o = alf_process(ctx, &r);
+        ASSERT(o != NULL && pasta_count(o) == 3, "missing prune target is a no-op");
+        pasta_free(o); alf_free(ctx);
+    }
+
+    /* filter first, then prune within the kept set */
+    {
+        AlfContext *ctx = alf_create(ALF_AGGREGATE, &r);
+        const char *fl[] = { "@server" };
+        const char *pr[] = { "@server/tls" };
+        alf_set_filter(ctx, fl, 1, &r);
+        alf_set_prune(ctx, pr, 1, &r);
+        alf_add_input(ctx, DOC, strlen(DOC), &r);
+        PastaValue *o = alf_process(ctx, &r);
+        ASSERT(o != NULL && pasta_count(o) == 1, "only @server kept");
+        const PastaValue *srv = o ? pasta_map_get(o, "server") : NULL;
+        ASSERT(srv && pasta_map_get(srv, "tls") == NULL, "server/tls pruned after filter");
+        ASSERT(srv && pasta_map_get(srv, "host") != NULL, "server/host kept");
+        pasta_free(o); alf_free(ctx);
+    }
+
+    /* directive form: @prune consumed, target dropped, works under conflate too */
+    {
+        AlfContext *ctx = alf_create(ALF_AGGREGATE, &r);
+        const char *DOC2 =
+            "@server { host: \"h\" }\n"
+            "@junk { x: 1 }\n"
+            "@prune [ \"@junk\" ]\n";
+        alf_add_input(ctx, DOC2, strlen(DOC2), &r);
+        PastaValue *o = alf_process(ctx, &r);
+        ASSERT(o != NULL, "directive process ok");
+        ASSERT(o && pasta_map_get(o, "junk") == NULL, "@junk pruned via directive");
+        ASSERT(o && pasta_map_get(o, "prune") == NULL, "@prune directive consumed");
+        ASSERT(o && pasta_map_get(o, "server") != NULL, "@server kept");
+        pasta_free(o); alf_free(ctx);
+    }
+
+    SUITE_OK();
+}
+
+/* ================================================================== */
 /*  MAIN                                                               */
 /* ================================================================== */
 
@@ -2693,6 +2797,9 @@ int main(void) {
     /* alf_process_to_string */
     test_process_to_string();
     test_process_to_string_error();
+
+    /* Prune / Filter (Pass 6) */
+    test_prune_filter();
 
     printf("\n========================================\n");
     printf("  Suites: %d / %d passed\n", suite_passed, suite_run);

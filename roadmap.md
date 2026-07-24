@@ -198,7 +198,7 @@ PastaValue *out = alf_process(ctx, &result);
 
 ## Feature 8: Prune / Filter (`@prune` / `@filter`)
 
-**Status:** [ ] Planned
+**Status:** [x] Complete
 
 Post-pipeline trimming of the output tree, producing a task-specific view of an
 otherwise complete document. Two dual operations run as the final pass (Pass 6),

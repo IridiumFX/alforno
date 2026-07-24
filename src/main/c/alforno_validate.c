@@ -117,7 +117,7 @@ int alf_pass5_validate(PastaValue *output, AlfContext *ctx,
                     snprintf(msg, sizeof(msg),
                              "required field '%s' missing in section '%s'",
                              field, secname);
-                    alf_set_error(result, ALF_ERR_VALIDATION, 5, secname, msg);
+                    alf_set_error(result, ALF_ERR_VALIDATION, ALF_PASS_VALIDATE, secname, msg);
                     return -1;
                 }
                 continue;
@@ -130,7 +130,7 @@ int alf_pass5_validate(PastaValue *output, AlfContext *ctx,
                          field, secname,
                          type_name(expected_type),
                          type_name((int)pasta_type(fval)));
-                alf_set_error(result, ALF_ERR_VALIDATION, 5, secname, msg);
+                alf_set_error(result, ALF_ERR_VALIDATION, ALF_PASS_VALIDATE, secname, msg);
                 return -1;
             }
         }

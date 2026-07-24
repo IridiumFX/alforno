@@ -43,6 +43,7 @@ add_library(alforno
     src/main/c/alforno_link.c
     src/main/c/alforno_validate.c
     src/main/c/alforno_include.c
+    src/main/c/alforno_select.c
 )
 
 target_include_directories(alforno

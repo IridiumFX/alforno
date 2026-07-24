@@ -88,7 +88,7 @@ static char *substitute_str(const char *s, size_t slen,
         if (!val) {
             char msg[320];
             snprintf(msg, sizeof(msg), "unresolved variable '{%s}'", varname);
-            alf_set_error(result, ALF_ERR_UNRESOLVED_VAR, 1, NULL, msg);
+            alf_set_error(result, ALF_ERR_UNRESOLVED_VAR, ALF_PASS_PARAM, NULL, msg);
             free(buf.data);
             return NULL;
         }
@@ -181,7 +181,7 @@ static PastaValue *subst_value(const PastaValue *v, const PastaValue *vars,
 static PastaValue *collect_and_strip_vars(AlfContext *ctx, AlfResult *result) {
     PastaValue *vars = pasta_new_map();
     if (!vars) {
-        alf_set_error(result, ALF_ERR_ALLOC, 1, NULL, "allocation failed");
+        alf_set_error(result, ALF_ERR_ALLOC, ALF_PASS_PARAM, NULL, "allocation failed");
         return NULL;
     }
 
@@ -192,7 +192,7 @@ static PastaValue *collect_and_strip_vars(AlfContext *ctx, AlfResult *result) {
         const PastaValue *v = pasta_map_get(inp, "vars");
         if (!v) continue;
         if (pasta_type(v) != PASTA_MAP) {
-            alf_set_error(result, ALF_ERR_PARSE, 1, "vars",
+            alf_set_error(result, ALF_ERR_PARSE, ALF_PASS_PARAM, "vars",
                           "@vars section must be a map");
             pasta_free(vars);
             return NULL;
@@ -201,7 +201,7 @@ static PastaValue *collect_and_strip_vars(AlfContext *ctx, AlfResult *result) {
         /* Merge into vars (last-write-wins: overlay existing keys) */
         PastaValue *merged = alf_map_merge(vars, v);
         if (!merged) {
-            alf_set_error(result, ALF_ERR_ALLOC, 1, NULL, "allocation failed");
+            alf_set_error(result, ALF_ERR_ALLOC, ALF_PASS_PARAM, NULL, "allocation failed");
             pasta_free(vars);
             return NULL;
         }
@@ -214,7 +214,7 @@ static PastaValue *collect_and_strip_vars(AlfContext *ctx, AlfResult *result) {
          */
         PastaValue *stripped = pasta_new_map();
         if (!stripped) {
-            alf_set_error(result, ALF_ERR_ALLOC, 1, NULL, "allocation failed");
+            alf_set_error(result, ALF_ERR_ALLOC, ALF_PASS_PARAM, NULL, "allocation failed");
             pasta_free(vars);
             return NULL;
         }
@@ -224,7 +224,7 @@ static PastaValue *collect_and_strip_vars(AlfContext *ctx, AlfResult *result) {
             PastaValue *c = alf_value_clone(pasta_map_value(inp, j));
             if (!c || pasta_set(stripped, key, c)) {
                 pasta_free(c); pasta_free(stripped); pasta_free(vars);
-                alf_set_error(result, ALF_ERR_ALLOC, 1, NULL, "allocation failed");
+                alf_set_error(result, ALF_ERR_ALLOC, ALF_PASS_PARAM, NULL, "allocation failed");
                 return NULL;
             }
         }

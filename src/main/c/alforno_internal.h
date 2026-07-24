@@ -22,8 +22,22 @@ static inline char *alf_strdup(const char *s) {
 /*  Context                                                            */
 /* ------------------------------------------------------------------ */
 
-#define ALF_MAX_INPUTS 64
-#define ALF_MAX_TAGS   32
+#define ALF_MAX_INPUTS    64
+#define ALF_MAX_TAGS      32
+#define ALF_MAX_SELECTORS 64
+
+/* Pipeline pass numbers — single source of truth, mirroring the spec's
+   Processing Pipeline.  Reported in AlfResult.pass; changing the pipeline is
+   a change here, not scattered literals. */
+typedef enum {
+    ALF_PASS_SETUP    = 0,  /* include resolution / API setup */
+    ALF_PASS_PARAM    = 1,  /* {variable} parameterization    */
+    ALF_PASS_WHEN     = 2,  /* conditional (when) filtering    */
+    ALF_PASS_MERGE    = 3,  /* aggregate / conflate            */
+    ALF_PASS_LINK     = 4,  /* @section link resolution        */
+    ALF_PASS_VALIDATE = 5,  /* recipe descriptor validation    */
+    ALF_PASS_SELECT   = 6   /* prune / filter                  */
+} AlfPass;
 
 struct AlfContext {
     AlfOp        op;
@@ -34,6 +48,10 @@ struct AlfContext {
     size_t       tag_count;
     char        *base_dir;                /* base dir for include resolution    */
     AlfPrecedence precedence;            /* gather: LAST_WINS or FIRST_FOUND  */
+    char        *prune_sel[ALF_MAX_SELECTORS];  /* Pass 6 prune selectors        */
+    size_t       prune_count;
+    char        *filter_sel[ALF_MAX_SELECTORS]; /* Pass 6 filter selectors       */
+    size_t       filter_count;
 };
 
 /* ------------------------------------------------------------------ */
@@ -77,6 +95,15 @@ PastaValue *alf_pass4_link(PastaValue *output, AlfContext *ctx,
    Returns 0 on success, -1 on validation failure. */
 int         alf_pass5_validate(PastaValue *output, AlfContext *ctx,
                                 AlfResult *result);
+
+/* Collect @prune / @filter directive selectors from the inputs into ctx and
+   strip those sections (runs before merge, so they never reach output). */
+int         alf_collect_select_directives(AlfContext *ctx, AlfResult *result);
+
+/* Pass 6: apply filter (keep-list) then prune (drop-list) selectors.
+   Takes ownership of output; returns a new (or the same) value, NULL on error. */
+PastaValue *alf_pass6_select(PastaValue *output, AlfContext *ctx,
+                              AlfResult *result);
 
 /* ------------------------------------------------------------------ */
 /*  Shared utility                                                     */

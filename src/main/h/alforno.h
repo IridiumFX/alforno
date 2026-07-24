@@ -59,14 +59,15 @@ typedef enum {
     ALF_ERR_CYCLE,            /* cycle detected in section link graph       */
     ALF_ERR_VALIDATION,       /* recipe validation failed (required/type)   */
     ALF_ERR_INCLUDE,          /* include directive error (file/cycle)       */
-    ALF_ERR_IO                /* file I/O error (scatter write failure)     */
+    ALF_ERR_IO,               /* file I/O error (scatter write failure)     */
+    ALF_ERR_BAD_SELECTOR      /* malformed prune/filter selector (Pass 6)   */
 } AlfError;
 
 /* ---- Result info ---- */
 
 typedef struct {
     AlfError code;
-    int      pass;          /* 0=setup 1=param 2=when 3=merge 4=link 5=validate */
+    int      pass;          /* 0=setup 1=param 2=when 3=merge 4=link 5=validate 6=select */
     char     section[64];   /* section name if relevant, else empty   */
     char     message[256];
 } AlfResult;
@@ -90,6 +91,19 @@ ALF_API int alf_set_precedence(AlfContext *ctx, AlfPrecedence prec,
    tags matches the active set.  Must be called before alf_process. */
 ALF_API int alf_set_tags(AlfContext *ctx, const char **tags, size_t count,
                            AlfResult *result);
+
+/* Set prune selectors (Pass 6): remove these sections/paths from the output.
+   A selector is anchored on a section and drills down by '/':
+   "@server", "@server/tls", "@server/tls/cert".  A selector that matches
+   nothing is a no-op.  Concatenates with any @prune directive sections. */
+ALF_API int alf_set_prune(AlfContext *ctx, const char **selectors, size_t count,
+                            AlfResult *result);
+
+/* Set filter selectors (Pass 6): keep only these sections/paths in the output
+   (plus the ancestors needed to reach them).  Same selector syntax as prune.
+   Concatenates with any @filter directive sections. */
+ALF_API int alf_set_filter(AlfContext *ctx, const char **selectors, size_t count,
+                             AlfResult *result);
 
 /* Set the base directory for resolving relative include paths.
    If not set, includes use the current working directory. */
