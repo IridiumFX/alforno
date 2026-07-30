@@ -96,9 +96,9 @@ if(ALF_BUILD_TESTS)
     )
 
     # On Windows the test loads alforno.dll (already in bin/) and the backend
-    # DLL.  A FetchContent-built backend may place its DLL elsewhere (Basta
-    # does not mirror Pasta's WIN32 RUNTIME_OUTPUT_DIRECTORY), so copy it next
-    # to the test executable so it is found at load time.
+    # DLL.  A FetchContent-built dependency's DLL can land outside our bin/
+    # depending on its own output-dir settings, so copy it next to the test
+    # executable so it is found at load time regardless of the backend.
     if(WIN32 AND BUILD_SHARED_LIBS)
         add_custom_command(TARGET alforno_test POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
