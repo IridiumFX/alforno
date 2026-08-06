@@ -4,7 +4,7 @@
   version:  "0.1.0",
   lang:     "c",
   sources:  { dir: "src/main/c", headers: "src/main/h" },
-  compile:  { std: "c11", warnings: ["Wall", "Wextra"], includes: ["src/main/c"] },
-  link:     { output: "shared" },
-  
+  compile:  { std: "c11", warnings: ["Wall", "Wextra"], includes: ["src/main/c"], defines: ["ALF_BUILDING"] },
+  output:   { type: "shared", name: "alforno" },
+  link:     { }
 }
