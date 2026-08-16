@@ -55,6 +55,9 @@ For conflate, call `alf_set_recipe()` before adding inputs.
 
 - [Specification](specs/alforno-spec.md) — formal definition of the processing pipeline
 - [Guide](specs/alforno-guide.md) — worked examples and case studies
+- [Changelog](CHANGELOG.md) — notable changes; states when the set of **source
+  files** changes, which matters if you integrate with an explicit source list
+  rather than by walking the tree
 
 ## License
 
