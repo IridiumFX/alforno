@@ -45,6 +45,11 @@ terminated at creation, and the result is built from its known length rather
 than re-measured. Test: `test_empty_string_survives`, which dirties the heap
 first so it fails on the old code without a sanitizer.
 
+**`-Wformat-truncation` at `-O2`, also from Vulpes.** `alf_set_error` copies
+into fixed 64/256-byte fields from callers' larger buffers. Truncation was
+always the intent; the copy now says so with an explicit precision, and the
+library builds warning-free under `-O2 -Wall -Wextra`.
+
 No API change. No source files added or removed.
 
 ### `2d30eb2` — gitignore: ignore now's `target/`

@@ -63,11 +63,15 @@ static inline void alf_set_error(AlfResult *r, AlfError code, int pass,
     if (!r) return;
     r->code = code;
     r->pass = pass;
+    /* Both fields are fixed-size and truncate by design; the explicit
+       precision says so, which is what -Wformat-truncation asks for. */
     if (section)
-        snprintf(r->section, sizeof(r->section), "%s", section);
+        snprintf(r->section, sizeof(r->section), "%.*s",
+                 (int)sizeof(r->section) - 1, section);
     else
         r->section[0] = '\0';
-    snprintf(r->message, sizeof(r->message), "%s", msg);
+    snprintf(r->message, sizeof(r->message), "%.*s",
+             (int)sizeof(r->message) - 1, msg);
 }
 
 /* ------------------------------------------------------------------ */
