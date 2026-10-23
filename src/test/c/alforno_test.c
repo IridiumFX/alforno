@@ -2517,6 +2517,47 @@ static void test_validate_unrecognized_descriptor(void) {
 /*  alf_process_to_string                                              */
 /* ================================================================== */
 
+/* An empty string must survive pass 1 as an empty string.  Pass 1 rebuilds
+   every string through a scratch buffer, and that buffer was never
+   terminated when nothing was appended to it, so "" came out as whatever
+   the heap held.  The heap is dirtied first so the old code fails here
+   deterministically rather than only under a sanitizer. */
+static void test_empty_string_survives(void) {
+    SUITE("pass 1: empty string stays empty (no stale heap bytes)");
+
+    for (int k = 0; k < 64; k++) {
+        char *junk = (char *)malloc(128);
+        if (junk) { memset(junk, 'X', 128); free(junk); }
+    }
+
+    AlfResult r;
+    AlfContext *ctx = alf_create(ALF_AGGREGATE, &r);
+    ASSERT(ctx != NULL, "create ok");
+    if (!ctx) return;
+
+    const char *src = "@game { identity: \"\", other: \"x\", list: [\"\", \"y\"] }";
+    ASSERT(alf_add_input(ctx, src, strlen(src), &r) == 0, "add input");
+
+    PastaValue *out = alf_process(ctx, &r);
+    ASSERT(out != NULL, "process ok");
+    if (out) {
+        const PastaValue *g = pasta_map_get(out, "game");
+        const PastaValue *id = g ? pasta_map_get(g, "identity") : NULL;
+        ASSERT(id && pasta_type(id) == PASTA_STRING, "identity is a string");
+        ASSERT(id && pasta_get_string_len(id) == 0, "identity has length 0");
+        ASSERT(id && pasta_get_string(id)[0] == '\0', "identity is terminated");
+        const PastaValue *l = g ? pasta_map_get(g, "list") : NULL;
+        const PastaValue *e = l ? pasta_array_get(l, 0) : NULL;
+        ASSERT(e && pasta_get_string_len(e) == 0, "empty string in an array stays empty");
+        const PastaValue *o = g ? pasta_map_get(g, "other") : NULL;
+        ASSERT(o && pasta_get_string_len(o) == 1, "neighbouring string unaffected");
+        pasta_free(out);
+    }
+
+    alf_free(ctx);
+    SUITE_OK();
+}
+
 static void test_process_to_string(void) {
     SUITE("alf_process_to_string: basic roundtrip");
 
@@ -2798,6 +2839,7 @@ int main(void) {
     /* alf_process_to_string */
     test_process_to_string();
     test_process_to_string_error();
+    test_empty_string_survives();
 
     /* Prune / Filter (Pass 6) */
     test_prune_filter();

@@ -32,6 +32,21 @@ Current source set (`src/main/c` unless noted):
 
 ## Unreleased
 
+### Pass 1: an empty string no longer reads uninitialised heap
+
+**Defect, reported by Vulpes (2026-10-12).** Every string goes through pass 1
+(parameterize), which rebuilds it in a scratch buffer. That buffer was
+allocated but never terminated, so a string with nothing to append — `""` —
+came back unterminated, and `pasta_new_string` measured it with `strlen` over
+whatever the heap held. `identity: ""` came out as a 6-byte string of leftover
+bytes on Vulpes' runs. ASan reports it as a heap-buffer-overflow; a fresh heap
+can hide it at `-O2`, which is how it survived the suite. The buffer is now
+terminated at creation, and the result is built from its known length rather
+than re-measured. Test: `test_empty_string_survives`, which dirties the heap
+first so it fails on the old code without a sanitizer.
+
+No API change. No source files added or removed.
+
 ### `2d30eb2` — gitignore: ignore now's `target/`
 
 `now` writes its build output to `target/`. The existing `*.dll` / `*.o`

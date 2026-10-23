@@ -14,7 +14,9 @@ static int sbuf_init(SBuf *b) {
     b->cap  = 128;
     b->len  = 0;
     b->data = (char *)malloc(b->cap);
-    return b->data ? 0 : -1;
+    if (!b->data) return -1;
+    b->data[0] = '\0';   /* an input with nothing to append must still be a string */
+    return 0;
 }
 
 static int sbuf_grow(SBuf *b, size_t need) {
@@ -52,7 +54,7 @@ static int sbuf_putc(SBuf *b, char c) {
  */
 static char *substitute_str(const char *s, size_t slen,
                               const PastaValue *vars,
-                              AlfResult *result) {
+                              AlfResult *result, size_t *out_len) {
     SBuf buf;
     if (sbuf_init(&buf)) return NULL;
 
@@ -113,6 +115,7 @@ static char *substitute_str(const char *s, size_t slen,
         if (sbuf_append(&buf, sv, strlen(sv))) { free(buf.data); return NULL; }
         i = j + 1;
     }
+    *out_len = buf.len;
     return buf.data;
 }
 
@@ -129,9 +132,10 @@ static PastaValue *subst_value(const PastaValue *v, const PastaValue *vars,
     case PASTA_STRING: {
         const char *s   = pasta_get_string(v);
         size_t      len = pasta_get_string_len(v);
-        char *ns = substitute_str(s, len, vars, result);
+        size_t nlen;
+        char *ns = substitute_str(s, len, vars, result, &nlen);
         if (!ns) return NULL;
-        PastaValue *r = pasta_new_string(ns);
+        PastaValue *r = pasta_new_string_len(ns, nlen);
         free(ns);
         return r;
     }
