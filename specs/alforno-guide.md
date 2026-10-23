@@ -20,7 +20,7 @@ Both run the same three passes:
 
 1. **Parameterize** — resolve `{variable}` tokens in all inputs against `@vars`
 2. **Merge** — aggregate or conflate per the operation
-3. **Link** — any string value `"@name"` matching a section name is replaced by embedding that section
+3. **Link** — any bare label value (`tls`, not `"@tls"`) naming a section is replaced by embedding that section
 
 ---
 
@@ -144,7 +144,7 @@ For `@db`:
 
 **Link**
 
-No `"@ref"` values in the output tree. Nothing to do.
+No label values naming a section in the output tree. Nothing to do.
 
 **Output**
 ```
@@ -277,13 +277,13 @@ alforno conflate db-recipe.pasta db-base.pasta db-prod.pasta vars-prod.pasta \
 @network {
     ingress: "api.{region}.example.com",
     port: 443,
-    tls: "@tls"
+    tls: tls
 }
 
 @services {
     replicas: 4,
     image: "platform:{version}",
-    database: "@database"
+    database: database
 }
 ```
 
@@ -332,9 +332,9 @@ alforno conflate deploy-recipe.pasta \
 
 **Link**
 
-Alforno scans the output tree and finds two `"@ref"` values:
-- `@network.tls` = `"@tls"` → section `@tls` found in `tls-resolved.pasta`
-- `@services.database` = `"@database"` → section `@database` found in `db-resolved.pasta`
+Alforno scans the output tree and finds two label values that name sections:
+- `@network.tls` = `tls` → section `@tls` found in `tls-resolved.pasta`
+- `@services.database` = `database` → section `@database` found in `db-resolved.pasta`
 
 Dependency check: neither link target is itself a format section, so both resolve immediately in parallel. No cycles.
 
@@ -406,12 +406,13 @@ Merge:
   conflate:  emit only sections and fields declared in recipe
 
 Link:
-  Build dependency DAG from "@ref" string values
+  Build dependency DAG from label values that name a section
   Hard error on cycle
   Resolve in topological order:
-    look up @ref in the merge output, then in inputs
+    look up the label in the merge output, then in inputs
     embed container at field position
-    hard error on missing target
+    a label naming no section is kept as a label (not an error)
+  Strings are never links: "@tls" stays the string "@tls"
 ```
 
 ---

@@ -90,7 +90,8 @@ void        alf_filter_when(AlfContext *ctx);
 /* Pass 3: aggregate or conflate input sections */
 PastaValue *alf_pass3_merge(AlfContext *ctx, AlfResult *result);
 
-/* Pass 4: replace "@section" link strings with embedded containers.
+/* Pass 4: replace label values naming a section with embedded containers
+   (strings are never links; an unmatched label is kept).
    Takes ownership of output; returns a new (or the same) value. */
 PastaValue *alf_pass4_link(PastaValue *output, AlfContext *ctx,
                             AlfResult *result);

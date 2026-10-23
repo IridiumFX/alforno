@@ -2558,6 +2558,44 @@ static void test_empty_string_survives(void) {
     SUITE_OK();
 }
 
+/* Links are labels, never strings.  Earlier spec prose described "@name"
+   strings as links; the code links bare labels, as Pasta's grammar names
+   label-ref.  Input taken verbatim from Vulpes' report of 2026-10-09. */
+static void test_link_label_not_string(void) {
+    SUITE("pass 4: a label links, a \"@name\" string does not");
+
+    AlfResult r;
+    AlfContext *ctx = alf_create(ALF_AGGREGATE, &r);
+    ASSERT(ctx != NULL, "create ok");
+    if (!ctx) return;
+
+    const char *src =
+        "@a { in_map_string: \"@b\", in_map_label: b, in_list: [\"@b\", b], other: nosuch }\n"
+        "@b { x: 1 }";
+    ASSERT(alf_add_input(ctx, src, strlen(src), &r) == 0, "add input");
+
+    PastaValue *out = alf_process(ctx, &r);
+    ASSERT(out != NULL, "process ok");
+    if (out) {
+        const PastaValue *a = pasta_map_get(out, "a");
+        const PastaValue *s = a ? pasta_map_get(a, "in_map_string") : NULL;
+        ASSERT(s && pasta_type(s) == PASTA_STRING
+                 && strcmp(pasta_get_string(s), "@b") == 0, "string \"@b\" kept as a string");
+        const PastaValue *l = a ? pasta_map_get(a, "in_map_label") : NULL;
+        ASSERT(l && pasta_type(l) == PASTA_MAP
+                 && pasta_get_number(pasta_map_get(l, "x")) == 1, "label b embedded section @b");
+        const PastaValue *arr = a ? pasta_map_get(a, "in_list") : NULL;
+        ASSERT(arr && pasta_type(pasta_array_get(arr, 0)) == PASTA_STRING, "string in list kept");
+        ASSERT(arr && pasta_type(pasta_array_get(arr, 1)) == PASTA_MAP, "label in list linked");
+        const PastaValue *o = a ? pasta_map_get(a, "other") : NULL;
+        ASSERT(o && pasta_type(o) == PASTA_LABEL, "label naming no section kept, no error");
+        pasta_free(out);
+    }
+
+    alf_free(ctx);
+    SUITE_OK();
+}
+
 static void test_process_to_string(void) {
     SUITE("alf_process_to_string: basic roundtrip");
 
@@ -2840,6 +2878,7 @@ int main(void) {
     test_process_to_string();
     test_process_to_string_error();
     test_empty_string_survives();
+    test_link_label_not_string();
 
     /* Prune / Filter (Pass 6) */
     test_prune_filter();

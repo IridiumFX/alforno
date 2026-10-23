@@ -92,7 +92,9 @@ In both cases, input order is the sole precedence rule: a later file overrides a
 
 ### Pass 4 — Link
 
-After the merge pass, alforno scans all string values in the output tree. Any value matching `"@name"` where `@name` is a section present in the resolved output or in any input pastlet is replaced by embedding that section's container at the field position.
+After the merge pass, alforno scans all **label** values in the output tree (a bare `label-ref` in Pasta's grammar: `tls`, unquoted). Any label naming a section `@tls` present in the resolved output or in any input pastlet is replaced by embedding that section's container at the field position. A label that names no section is kept unchanged; it is not an error.
+
+Strings are never links. `"@tls"` is the string `@tls` and passes through untouched, so a value that merely looks like a reference cannot be embedded by accident. (Earlier drafts of this spec described the string form `"@name"`; the implementation has always linked labels, which is what Pasta's grammar names `label-ref` for.)
 
 Link lookup order:
 1. Resolved output sections (produced by Pass 3)

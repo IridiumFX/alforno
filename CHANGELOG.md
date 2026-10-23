@@ -50,6 +50,14 @@ into fixed 64/256-byte fields from callers' larger buffers. Truncation was
 always the intent; the copy now says so with an explicit precision, and the
 library builds warning-free under `-O2 -Wall -Wextra`.
 
+**Spec and guide: links are labels, not strings.** The prose described a
+string `"@name"` as a link. The code has always linked a bare *label* (`tls`),
+which is what Pasta's grammar calls `label-ref`; a string `"@tls"` passes
+through untouched, and a label naming no section is kept rather than being an
+error (the guide's pseudocode also said otherwise). Docs corrected to match
+the code, not the reverse. Test: `test_link_label_not_string`, using Vulpes'
+input verbatim.
+
 No API change. No source files added or removed.
 
 ### `2d30eb2` — gitignore: ignore now's `target/`
