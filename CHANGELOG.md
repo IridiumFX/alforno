@@ -32,6 +32,13 @@ Current source set (`src/main/c` unless noted):
 
 ## Unreleased
 
+### Docs: `alf_process` runs seven passes, not three
+
+`alforno.h` described `alf_process` / `alf_process_to_string` as running "all
+three passes", and the guide's primer listed three — both left over from before
+include, `when`, validate and prune/filter existed. Both now give the full
+order (0-6). Flagged by apennines (2026-08-24). Comments only.
+
 ### Pass 1: an empty string no longer reads uninitialised heap
 
 **Defect, reported by Vulpes (2026-10-12).** Every string goes through pass 1

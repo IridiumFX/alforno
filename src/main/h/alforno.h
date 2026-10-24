@@ -126,12 +126,13 @@ ALF_API int alf_set_recipe(AlfContext *ctx, const char *src, size_t len,
 ALF_API int alf_add_input(AlfContext *ctx, const char *src, size_t len,
                            AlfResult *result);
 
-/* Execute all three passes and return the output as a Pasta named-section
+/* Run the whole pipeline (passes 0-6: include, parameterize, when, merge,
+   link, validate, prune/filter) and return the output as a Pasta named-section
    value tree (PASTA_MAP keyed by section name). Caller must pasta_free().
    Returns NULL on error; result is populated with details. */
 ALF_API PastaValue *alf_process(AlfContext *ctx, AlfResult *result);
 
-/* Execute all three passes and return the serialized output string.
+/* Run the whole pipeline, as alf_process, and return the serialized output.
    flags is passed to pasta_write (e.g. PASTA_PRETTY | PASTA_SECTIONS).
    Caller must free() the returned string. Returns NULL on error. */
 ALF_API char *alf_process_to_string(AlfContext *ctx, int flags,

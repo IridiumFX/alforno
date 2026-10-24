@@ -16,11 +16,13 @@ alforno conflate  recipe.pasta   pastlet1.pasta ... pastletN.pasta
 
 **Conflate** is the controlled form: a recipe declares exactly which sections and fields appear in the output. Everything else is dropped. Last file still wins on field conflicts.
 
-Both run the same three passes:
+Both run the same pipeline. The three passes that do the core work, and that the walkthroughs below show, are:
 
-1. **Parameterize** — resolve `{variable}` tokens in all inputs against `@vars`
-2. **Merge** — aggregate or conflate per the operation
-3. **Link** — any bare label value (`tls`, not `"@tls"`) naming a section is replaced by embedding that section
+- **Parameterize** (pass 1) — resolve `{variable}` tokens in all inputs against `@vars`
+- **Merge** (pass 3) — aggregate or conflate per the operation
+- **Link** (pass 4) — any bare label value (`tls`, not `"@tls"`) naming a section is replaced by embedding that section
+
+The full order is 0 include, 1 parameterize, 2 `when` filtering, 3 merge, 4 link, 5 validate, 6 prune/filter; see `alforno-spec.md` for each.
 
 ---
 
