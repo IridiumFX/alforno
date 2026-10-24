@@ -2596,6 +2596,54 @@ static void test_link_label_not_string(void) {
     SUITE_OK();
 }
 
+#ifdef ALF_USE_BASTA
+/* A Basta build must have blob support.  ALF_HAS_BLOB now follows the
+   capability basta.h declares; if that wiring ever broke, every blob arm
+   would compile out and blobs would be lost in silence, so fail the build. */
+#ifndef ALF_HAS_BLOB
+#error "ALF_USE_BASTA build without ALF_HAS_BLOB: blob handling compiled out"
+#endif
+
+/* A blob survives the whole pipeline byte-exact, and is not merged into a
+   null.  There was no blob test before; the blob-to-null loss now reported
+   could not have been caught by this suite. */
+static void test_blob_survives_pipeline(void) {
+    SUITE("basta: a blob survives alf_process byte-exact");
+
+    static const unsigned char payload[5] = { 0x00, 0x01, 0x22, 0x0A, 0xFF };
+    unsigned char src[64];
+    size_t n = 0;
+    const char *head = "@s { b: ";
+    memcpy(src + n, head, strlen(head)); n += strlen(head);
+    src[n++] = 0x00;                                   /* blob sentinel */
+    for (int k = 7; k >= 0; k--) src[n++] = (unsigned char)((sizeof payload >> (8 * k)) & 0xFF);
+    memcpy(src + n, payload, sizeof payload); n += sizeof payload;
+    const char *tail = ", t: \"x\" }";
+    memcpy(src + n, tail, strlen(tail)); n += strlen(tail);
+
+    AlfResult r;
+    AlfContext *ctx = alf_create(ALF_AGGREGATE, &r);
+    ASSERT(ctx != NULL, "create ok");
+    if (!ctx) return;
+    ASSERT(alf_add_input(ctx, (const char *)src, n, &r) == 0, "add blob input");
+
+    PastaValue *out = alf_process(ctx, &r);
+    ASSERT(out != NULL && r.code == ALF_OK, "process ok");
+    if (out) {
+        const PastaValue *s = pasta_map_get(out, "s");
+        const PastaValue *b = s ? pasta_map_get(s, "b") : NULL;
+        ASSERT(b && pasta_type(b) == PASTA_BLOB, "still a blob, not null");
+        size_t blen = 0;
+        const uint8_t *data = b ? pasta_get_blob(b, &blen) : NULL;
+        ASSERT(blen == sizeof payload && data
+               && memcmp(data, payload, sizeof payload) == 0, "blob bytes exact");
+        pasta_free(out);
+    }
+    alf_free(ctx);
+    SUITE_OK();
+}
+#endif /* ALF_USE_BASTA */
+
 static void test_process_to_string(void) {
     SUITE("alf_process_to_string: basic roundtrip");
 
@@ -2879,6 +2927,9 @@ int main(void) {
     test_process_to_string_error();
     test_empty_string_survives();
     test_link_label_not_string();
+#ifdef ALF_USE_BASTA
+    test_blob_survives_pipeline();
+#endif
 
     /* Prune / Filter (Pass 6) */
     test_prune_filter();

@@ -6,6 +6,10 @@
  * or Basta (text + binary blobs).  Define ALF_USE_BASTA at compile time to
  * select Basta; the default is Pasta.
  *
+ * Blob support (ALF_HAS_BLOB) follows the capability the included header
+ * declares (PASTA_HAS_BLOB / BASTA_HAS_BLOB), not ALF_USE_BASTA.  A build
+ * may still define ALF_HAS_BLOB itself; that is respected.
+ *
  * All source files include this header instead of pasta.h or basta.h
  * directly.  The Pasta-style names are used throughout the codebase;
  * when Basta is selected they are mapped to the corresponding Basta
@@ -83,15 +87,35 @@ typedef BastaResult  PastaResult;
 #define pasta_new_number_fmt    basta_new_number_fmt
 #define pasta_get_number_fmt    basta_get_number_fmt
 
-/* ---- Blob support (Basta only) ---- */
-#define ALF_HAS_BLOB  1
+/* ---- Blob support ---- */
 #define PASTA_BLOB    BASTA_BLOB
 #define pasta_new_blob   basta_new_blob
 #define pasta_get_blob   basta_get_blob
 
+/* basta.h states its own capability; a basta.h older than BASTA_HAS_BLOB
+   is still Basta, and always had blobs. */
+#if !defined(BASTA_HAS_BLOB) || BASTA_HAS_BLOB
+#  ifndef ALF_HAS_BLOB
+#    define ALF_HAS_BLOB  1
+#  endif
+#endif
+
 #else /* Pasta (default) */
 
 #include "pasta.h"
+
+/* Ask the header that was actually included, not the build flag.  Real
+   Pasta says PASTA_HAS_BLOB 0.  A pasta-shaped header backed by Basta (a
+   consumer's compatibility shim) says 1 and supplies PASTA_BLOB,
+   pasta_new_blob and pasta_get_blob.  Inferring "no ALF_USE_BASTA, so no
+   blobs" got that second case wrong: the blob arms compiled out while
+   blobs still arrived, and each one was merged into a null.  A pasta.h
+   older than PASTA_HAS_BLOB is real Pasta, so absent means 0. */
+#if defined(PASTA_HAS_BLOB) && PASTA_HAS_BLOB
+#  ifndef ALF_HAS_BLOB
+#    define ALF_HAS_BLOB  1
+#  endif
+#endif
 
 #endif /* ALF_USE_BASTA */
 

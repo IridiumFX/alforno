@@ -32,6 +32,28 @@ Current source set (`src/main/c` unless noted):
 
 ## Unreleased
 
+### Blob support follows the header, not the build flag
+
+**Suggested by now (2026-09-03).** `alf_backend.h` reasoned "no
+`ALF_USE_BASTA`, therefore Pasta, therefore no blobs". That holds for real
+Pasta and fails for a pasta-shaped header backed by Basta — now's
+compatibility shim was exactly that, so the `#ifdef ALF_HAS_BLOB` arms in
+`alf_value_clone` and `subst_value` compiled out while blobs still arrived,
+and each was merged into a null with success reported.
+
+`ALF_HAS_BLOB` now follows the capability the included header declares:
+`PASTA_HAS_BLOB` (Pasta `37675ed`, `0`) or `BASTA_HAS_BLOB` (Basta `2ef95dd`,
+`1`). Both directions are backward-compatible: a `pasta.h` without the macro
+is real Pasta (no blobs), a `basta.h` without it is still Basta (blobs), and a
+build that defines `ALF_HAS_BLOB` itself is respected. Shim authors: declare
+`PASTA_HAS_BLOB 1` and supply `PASTA_BLOB`, `pasta_new_blob`, `pasta_get_blob`.
+
+Test: `test_blob_survives_pipeline` (Basta backend) — the suite had no blob
+test at all, which is how the original loss could not be caught here. A Basta
+build without `ALF_HAS_BLOB` is now a compile error rather than a silent one.
+
+No source files added or removed.
+
 ### Docs: `alf_process` runs seven passes, not three
 
 `alforno.h` described `alf_process` / `alf_process_to_string` as running "all
