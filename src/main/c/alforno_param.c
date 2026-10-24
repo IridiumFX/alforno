@@ -171,7 +171,15 @@ static PastaValue *subst_value(const PastaValue *v, const PastaValue *vars,
     }
 #endif
     }
-    return pasta_new_null();
+    /* Only a type with no case above reaches here: one this build was
+       compiled without (a blob, when ALF_HAS_BLOB is off).  Fail rather
+       than substitute null, which would report success with the value
+       gone.  Pass 1 visits every input value, so this is where such a
+       mismatch surfaces for alf_process. */
+    alf_set_error(result, ALF_ERR_UNSUPPORTED_TYPE, ALF_PASS_PARAM, NULL,
+                  "value of a type this build does not support "
+                  "(blob support compiled out?)");
+    return NULL;
 }
 
 /* ------------------------------------------------------------------ */
@@ -251,6 +259,11 @@ int alf_pass1_parameterize(AlfContext *ctx, AlfResult *result) {
     for (size_t i = 0; i < ctx->input_count; i++) {
         PastaValue *subst = subst_value(ctx->inputs[i], vars, result);
         if (!subst) {
+            /* Allocation failures inside subst_value return NULL without
+               a code; do not let alf_process fail while reporting ALF_OK. */
+            if (result && result->code == ALF_OK)
+                alf_set_error(result, ALF_ERR_ALLOC, ALF_PASS_PARAM, NULL,
+                              "allocation failed");
             pasta_free(vars);
             return -1;
         }

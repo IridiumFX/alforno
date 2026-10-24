@@ -32,6 +32,35 @@ Current source set (`src/main/c` unless noted):
 
 ## Unreleased
 
+### An unsupported value type is an error, not a silent null
+
+**Suggested by now (2026-09-03).** `alf_value_clone` and pass 1's
+`subst_value` ended in `return pasta_new_null()`. Every type has a case, so
+that line was reachable only for a type the build could not handle — and it
+turned "I do not know what this is" into "this was nothing", which is what made
+now's blob loss silent. Both now return `NULL`, a failure every caller already
+propagates (all ~50 call sites checked).
+
+For `alf_process` the failure is precise: pass 1 visits every input value
+before any merge, so a mismatch surfaces there as the new code
+**`ALF_ERR_UNSUPPORTED_TYPE`** ("blob support compiled out?"), appended to
+`AlfError` so existing values keep their numbers. A direct `alf_map_merge`
+caller gets `NULL`.
+
+**Behaviour change**, for a build that was already losing data: where such a
+build used to succeed with the value replaced by null, it now fails. A
+correctly configured build cannot reach either path.
+
+Also fixed in passing: an allocation failure inside pass 1 returned `NULL`
+without setting a code, so `alf_process` could fail while reporting `ALF_OK`.
+
+Verified end to end by rebuilding now's original shim (alforno's own name
+mappings minus the blob triple): the old code reports success with the blob
+gone; this code fails with `ALF_ERR_UNSUPPORTED_TYPE`; with the shim declaring
+`PASTA_HAS_BLOB 1` the blob survives.
+
+No source files added or removed.
+
 ### Blob support follows the header, not the build flag
 
 **Suggested by now (2026-09-03).** `alf_backend.h` reasoned "no

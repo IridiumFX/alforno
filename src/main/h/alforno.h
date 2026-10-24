@@ -60,7 +60,9 @@ typedef enum {
     ALF_ERR_VALIDATION,       /* recipe validation failed (required/type)   */
     ALF_ERR_INCLUDE,          /* include directive error (file/cycle)       */
     ALF_ERR_IO,               /* file I/O error (scatter write failure)     */
-    ALF_ERR_BAD_SELECTOR      /* malformed prune/filter selector (Pass 6)   */
+    ALF_ERR_BAD_SELECTOR,     /* malformed prune/filter selector (Pass 6)   */
+    ALF_ERR_UNSUPPORTED_TYPE  /* a value of a type this build was compiled
+                                 without, e.g. a blob with blob support off */
 } AlfError;
 
 /* ---- Result info ---- */

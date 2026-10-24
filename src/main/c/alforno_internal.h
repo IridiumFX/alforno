@@ -114,11 +114,14 @@ PastaValue *alf_pass6_select(PastaValue *output, AlfContext *ctx,
 /*  Shared utility                                                     */
 /* ------------------------------------------------------------------ */
 
-/* Deep-copy a PastaValue tree using the public pasta API only. */
+/* Deep-copy a PastaValue tree using the public pasta API only.
+   Returns NULL on allocation failure, and for a value of a type this build
+   cannot copy (a blob with ALF_HAS_BLOB off) -- never a substitute null. */
 PastaValue *alf_value_clone(const PastaValue *v);
 
 /* Merge two map sections: base fields, then overlay fields win on conflict.
-   Both src values must be PASTA_MAP. Returns a fresh map. */
+   Both src values must be PASTA_MAP. Returns a fresh map, or NULL on
+   failure, including a value of a type this build cannot copy. */
 PastaValue *alf_map_merge(const PastaValue *base, const PastaValue *overlay);
 
 /* Merge two section values. If both are maps, field-level last-write-wins.

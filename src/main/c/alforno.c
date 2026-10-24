@@ -44,7 +44,11 @@ PastaValue *alf_value_clone(const PastaValue *v) {
     }
 #endif
     }
-    return pasta_new_null();
+    /* A type with no case above: one this build was compiled without (a
+       blob, when ALF_HAS_BLOB is off).  Returning null here would turn
+       "unknown" into "nothing" and let a merge report success with the
+       value gone; NULL makes it a failure every caller already propagates. */
+    return NULL;
 }
 
 PastaValue *alf_map_merge(const PastaValue *base, const PastaValue *overlay) {
