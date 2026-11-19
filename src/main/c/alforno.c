@@ -1,8 +1,48 @@
 #include "alforno_internal.h"
 
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+#endif
+
 /* ------------------------------------------------------------------ */
 /*  Shared utilities                                                   */
 /* ------------------------------------------------------------------ */
+
+FILE *alf_fopen(const char *path, const char *mode) {
+#ifdef _WIN32
+    /* The narrow fopen reads its path in the ANSI code page, so a UTF-8
+       name with characters that page lacks names another file, or none.
+       A path that is valid UTF-8 is opened wide; one that is not (an ANSI
+       path from an existing caller) is opened narrow, as before. */
+    int wlen = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, path, -1, NULL, 0);
+    if (wlen > 0) {
+        wchar_t wmode[8];
+        size_t i = 0;
+        for (; mode[i] && i < sizeof wmode / sizeof wmode[0] - 1; i++)
+            wmode[i] = (wchar_t)(unsigned char)mode[i];
+        wmode[i] = L'\0';
+
+        wchar_t *wpath = (wchar_t *)malloc((size_t)wlen * sizeof(wchar_t));
+        if (!wpath) return NULL;
+        FILE *fp = NULL;
+        if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, path, -1, wpath, wlen) > 0)
+            fp = _wfopen(wpath, wmode);
+        free(wpath);
+
+        /* An ANSI path can also be valid UTF-8 by coincidence.  For a read,
+           try it narrow too, so anything that opened before still opens.
+           Never for a write: that would create a file under the wrong name. */
+        if (!fp && mode[0] == 'r') {
+            for (const unsigned char *p = (const unsigned char *)path; *p; p++)
+                if (*p >= 0x80) return fopen(path, mode);
+        }
+        return fp;
+    }
+#endif
+    return fopen(path, mode);
+}
 
 PastaValue *alf_number_clone(const PastaValue *v) {
     int fmt = pasta_get_number_fmt(v);
@@ -238,7 +278,7 @@ ALF_API int alf_add_input_file(AlfContext *ctx, const char *path,
         alf_set_error(result, ALF_ERR_PARSE, ALF_PASS_SETUP, NULL, "null argument");
         return -1;
     }
-    FILE *fp = fopen(path, "rb");
+    FILE *fp = alf_fopen(path, "rb");
     if (!fp) {
         char msg[320];
         snprintf(msg, sizeof(msg), "cannot open file '%s'", path);
@@ -544,7 +584,7 @@ ALF_API int alf_scatter_to_dir(AlfContext *ctx, const char *output_dir,
         memcpy(path + dlen + nlen, ext, elen);
         path[dlen + nlen + elen] = '\0';
 
-        FILE *fp = fopen(path, "wb");
+        FILE *fp = alf_fopen(path, "wb");
         if (!fp) {
             char msg[320];
             snprintf(msg, sizeof(msg), "cannot write file '%s'", path);

@@ -32,6 +32,29 @@ Current source set (`src/main/c` unless noted):
 
 ## Unreleased
 
+### Windows: open UTF-8 paths outside the ANSI code page
+
+**Requested by Vulpes (2026-11-07).** alforno opened files with plain `fopen`
+in three places: `alf_add_input_file`, `@include`, and `alf_scatter_to_dir`'s
+output. On Windows the narrow `fopen` reads its path in the ANSI code page, so
+a UTF-8 name with characters that page lacks (Vulpes' example, katakana and a
+curly apostrophe) named another file: not found on read, written under a wrong
+name on scatter.
+
+All three now go through `alf_fopen`. On Windows a path that is valid UTF-8 is
+opened with `_wfopen`; one that is not (an ANSI path from an existing caller)
+is opened narrow, exactly as before. For reads only, a non-ASCII path that
+fails wide is also tried narrow, so an ANSI path that happens to be valid UTF-8
+still opens what it opened before. Writes never fall back, since that could
+create a file under the wrong name. Elsewhere it is plain `fopen`.
+
+Test: `test_utf8_paths`, Vulpes' name in the directory, an input file, an
+`@include` and the scatter target. Built natively with MinGW gcc 15.2 on a
+code page 1252 machine, it fails 3 assertions on the previous code and passes
+now. ANSI byte paths still open.
+
+No source files added or removed.
+
 ### Numbers keep their exact value and their base through every pass
 
 alforno copied every number as `pasta_new_number(pasta_get_number(v))`, in

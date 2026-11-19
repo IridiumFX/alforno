@@ -10,6 +10,9 @@
 #include <math.h>
 #ifdef _WIN32
 #include <direct.h>
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <wchar.h>
 #else
 #include <sys/stat.h>
 #include <unistd.h>
@@ -2713,6 +2716,99 @@ static void test_exact_integers_survive(void) {
 }
 #endif
 
+/* ------------------------------------------------------------------ */
+/*  UTF-8 paths                                                         */
+/* ------------------------------------------------------------------ */
+
+/* The test creates and removes its fixtures with the same rule alforno
+   applies, so on Windows its own setup does not hit the ANSI code page. */
+#ifdef _WIN32
+static wchar_t *u8_widen(const char *s) {
+    int n = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, s, -1, NULL, 0);
+    wchar_t *w = n > 0 ? (wchar_t *)malloc((size_t)n * sizeof(wchar_t)) : NULL;
+    if (w) MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, s, -1, w, n);
+    return w;
+}
+static int u8_write(const char *path, const char *text) {
+    wchar_t *w = u8_widen(path);
+    FILE *fp = w ? _wfopen(w, L"wb") : NULL;
+    free(w);
+    if (!fp) return -1;
+    fputs(text, fp);
+    return fclose(fp);
+}
+static int u8_exists(const char *path) {
+    wchar_t *w = u8_widen(path);
+    FILE *fp = w ? _wfopen(w, L"rb") : NULL;
+    free(w);
+    if (fp) fclose(fp);
+    return fp != NULL;
+}
+static void u8_mkdir(const char *p)  { wchar_t *w = u8_widen(p); if (w) _wmkdir(w); free(w); }
+static void u8_remove(const char *p) { wchar_t *w = u8_widen(p); if (w) _wremove(w); free(w); }
+static void u8_rmdir(const char *p)  { wchar_t *w = u8_widen(p); if (w) _wrmdir(w); free(w); }
+#else
+static int u8_write(const char *path, const char *text) {
+    FILE *fp = fopen(path, "wb");
+    if (!fp) return -1;
+    fputs(text, fp);
+    return fclose(fp);
+}
+static int u8_exists(const char *path) {
+    FILE *fp = fopen(path, "rb");
+    if (fp) fclose(fp);
+    return fp != NULL;
+}
+static void u8_mkdir(const char *p)  { mkdir(p, 0755); }
+static void u8_remove(const char *p) { remove(p); }
+static void u8_rmdir(const char *p)  { rmdir(p); }
+#endif
+
+/* A name outside the Windows ANSI code page -- katakana and a curly
+   apostrophe, Vulpes' own example -- in the directory, in an input file,
+   in an @include, and as the scatter target.  Narrow fopen reads such a
+   path in the ANSI code page on Windows and names a different file. */
+#define U8_STELLA "\xe3\x82\xb9\xe3\x83\x86\xe3\x83\xa9\xe2\x80\x99s"
+static void test_utf8_paths(void) {
+    SUITE("UTF-8 paths: input file, @include and scatter (Vulpes B51)");
+
+    const char *dir = "alf_utf8_" U8_STELLA;
+    char input[256], inc[256], out[256];
+    snprintf(input, sizeof input, "%s/" U8_STELLA " b51.pasta", dir);
+    snprintf(inc,   sizeof inc,   "%s/inc " U8_STELLA ".pasta", dir);
+    snprintf(out,   sizeof out,   "%s/app.pasta", dir);
+
+    u8_mkdir(dir);
+    ASSERT(u8_write(input, "@art { name: \"stella\" }") == 0, "fixture: input file");
+    ASSERT(u8_write(inc, "@inc { v: 7 }") == 0, "fixture: included file");
+
+    AlfResult r;
+    AlfContext *ctx = alf_create(ALF_AGGREGATE, &r);
+    ASSERT(ctx != NULL, "create ok");
+    if (ctx) {
+        alf_set_base_dir(ctx, dir, &r);
+        ASSERT(alf_add_input_file(ctx, input, &r) == 0, "alf_add_input_file opens a UTF-8 name");
+        const char *src = "@include [\"inc " U8_STELLA ".pasta\"]\n@app { x: 1 }";
+        ASSERT(alf_add_input(ctx, src, strlen(src), &r) == 0, "add input with @include");
+
+        int n = alf_scatter_to_dir(ctx, dir, ".pasta", &r);
+        ASSERT(n == 3 && r.code == ALF_OK, "@include of a UTF-8 name resolved; 3 sections scattered");
+        ASSERT(u8_exists(out), "scatter wrote into a UTF-8-named directory");
+        alf_free(ctx);
+    }
+
+    const char *made[] = { "art.pasta", "inc.pasta", "app.pasta" };
+    for (size_t i = 0; i < sizeof made / sizeof made[0]; i++) {
+        char p[256];
+        snprintf(p, sizeof p, "%s/%s", dir, made[i]);
+        u8_remove(p);
+    }
+    u8_remove(input);
+    u8_remove(inc);
+    u8_rmdir(dir);
+    SUITE_OK();
+}
+
 static void test_process_to_string(void) {
     SUITE("alf_process_to_string: basic roundtrip");
 
@@ -2997,6 +3093,7 @@ int main(void) {
     test_empty_string_survives();
     test_link_label_not_string();
     test_number_base_survives();
+    test_utf8_paths();
 #if defined(ALF_HAS_EXACT_INTEGERS) || defined(PASTA_HAS_EXACT_INTEGERS)
     test_exact_integers_survive();
 #endif

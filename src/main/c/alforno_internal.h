@@ -119,6 +119,12 @@ PastaValue *alf_pass6_select(PastaValue *output, AlfContext *ctx,
    cannot copy (a blob with ALF_HAS_BLOB off) -- never a substitute null. */
 PastaValue *alf_value_clone(const PastaValue *v);
 
+/* fopen for every path alforno opens.  On Windows a valid UTF-8 path is
+   opened through _wfopen, so names outside the ANSI code page work; any
+   other path is opened narrow, exactly as plain fopen did.  Elsewhere it
+   is plain fopen. */
+FILE *alf_fopen(const char *path, const char *mode);
+
 /* Copy a number keeping its base (0xFF stays 0xFF) and, when the backend
    stores exact integers, its exact value: an integer must not round-trip
    through double, which rounds anything past 2^53. */

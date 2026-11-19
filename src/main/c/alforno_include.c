@@ -5,7 +5,7 @@
 /* ------------------------------------------------------------------ */
 
 static char *read_file_contents(const char *path, size_t *out_len) {
-    FILE *fp = fopen(path, "rb");
+    FILE *fp = alf_fopen(path, "rb");
     if (!fp) return NULL;
     fseek(fp, 0, SEEK_END);
     long sz = ftell(fp);
