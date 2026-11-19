@@ -92,6 +92,21 @@ typedef BastaResult  PastaResult;
 #define pasta_new_blob   basta_new_blob
 #define pasta_get_blob   basta_get_blob
 
+/* ---- Exact integers (when the header has them) ---- */
+#ifdef BASTA_HAS_EXACT_INTEGERS
+#define PastaNumberKind         BastaNumberKind
+#define PASTA_NUMBER_NONE       BASTA_NUMBER_NONE
+#define PASTA_NUMBER_FLOAT      BASTA_NUMBER_FLOAT
+#define PASTA_NUMBER_INT64      BASTA_NUMBER_INT64
+#define PASTA_NUMBER_UINT64     BASTA_NUMBER_UINT64
+#define pasta_get_number_kind   basta_get_number_kind
+#define pasta_get_int64         basta_get_int64
+#define pasta_get_uint64        basta_get_uint64
+#define pasta_new_int64_fmt     basta_new_int64_fmt
+#define pasta_new_uint64_fmt    basta_new_uint64_fmt
+#define ALF_HAS_EXACT_INTEGERS  1
+#endif
+
 /* basta.h states its own capability; a basta.h older than BASTA_HAS_BLOB
    is still Basta, and always had blobs. */
 #if !defined(BASTA_HAS_BLOB) || BASTA_HAS_BLOB
@@ -115,6 +130,12 @@ typedef BastaResult  PastaResult;
 #  ifndef ALF_HAS_BLOB
 #    define ALF_HAS_BLOB  1
 #  endif
+#endif
+
+/* Exact 64-bit integers, likewise taken from the header: without them an
+   integer can only be copied through double, which rounds past 2^53. */
+#if defined(PASTA_HAS_EXACT_INTEGERS) && PASTA_HAS_EXACT_INTEGERS
+#  define ALF_HAS_EXACT_INTEGERS  1
 #endif
 
 #endif /* ALF_USE_BASTA */

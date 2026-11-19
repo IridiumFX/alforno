@@ -119,6 +119,11 @@ PastaValue *alf_pass6_select(PastaValue *output, AlfContext *ctx,
    cannot copy (a blob with ALF_HAS_BLOB off) -- never a substitute null. */
 PastaValue *alf_value_clone(const PastaValue *v);
 
+/* Copy a number keeping its base (0xFF stays 0xFF) and, when the backend
+   stores exact integers, its exact value: an integer must not round-trip
+   through double, which rounds anything past 2^53. */
+PastaValue *alf_number_clone(const PastaValue *v);
+
 /* Merge two map sections: base fields, then overlay fields win on conflict.
    Both src values must be PASTA_MAP. Returns a fresh map, or NULL on
    failure, including a value of a type this build cannot copy. */

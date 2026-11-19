@@ -1,4 +1,5 @@
 #include "alforno_internal.h"
+#include <inttypes.h>
 
 /* ------------------------------------------------------------------ */
 /*  Simple dynamic byte buffer                                         */
@@ -101,7 +102,20 @@ static char *substitute_str(const char *s, size_t slen,
         if (!sv) {
             if (pasta_type(val) == PASTA_NUMBER) {
                 double n = pasta_get_number(val);
-                if (n == (long long)n && n >= -1e15 && n <= 1e15)
+#ifdef ALF_HAS_EXACT_INTEGERS
+                /* Exact integers print exactly, never through double. */
+                int64_t  iv;
+                uint64_t uv;
+                if (pasta_get_number_kind(val) == PASTA_NUMBER_INT64
+                    && pasta_get_int64(val, &iv) == 0)
+                    snprintf(numbuf, sizeof(numbuf), "%" PRId64, iv);
+                else if (pasta_get_number_kind(val) == PASTA_NUMBER_UINT64
+                         && pasta_get_uint64(val, &uv) == 0)
+                    snprintf(numbuf, sizeof(numbuf), "%" PRIu64, uv);
+                else
+#endif
+                /* Range first: casting an out-of-range double is undefined. */
+                if (n >= -1e15 && n <= 1e15 && n == (long long)n)
                     snprintf(numbuf, sizeof(numbuf), "%lld", (long long)n);
                 else
                     snprintf(numbuf, sizeof(numbuf), "%g", n);
@@ -128,7 +142,7 @@ static PastaValue *subst_value(const PastaValue *v, const PastaValue *vars,
     switch (pasta_type(v)) {
     case PASTA_NULL:   return pasta_new_null();
     case PASTA_BOOL:   return pasta_new_bool(pasta_get_bool(v));
-    case PASTA_NUMBER: return pasta_new_number(pasta_get_number(v));
+    case PASTA_NUMBER: return alf_number_clone(v);
     case PASTA_STRING: {
         const char *s   = pasta_get_string(v);
         size_t      len = pasta_get_string_len(v);

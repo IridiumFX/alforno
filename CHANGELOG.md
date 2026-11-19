@@ -32,6 +32,31 @@ Current source set (`src/main/c` unless noted):
 
 ## Unreleased
 
+### Numbers keep their exact value and their base through every pass
+
+alforno copied every number as `pasta_new_number(pasta_get_number(v))`, in
+`alf_value_clone` and in pass 1's `subst_value`. That dropped the base, so
+`0xFF` came out as `255` (always true, unreported), and once Pasta and Basta
+began storing integers exactly (Pixelinna, 2026-11-17) it rounded them again:
+`9007199254740993` came out `9007199254740992`, `UINT64_MAX` as
+`1.8446744073709552e+19`.
+
+Both now go through `alf_number_clone`, which keeps the base and, when the
+header declares `PASTA_HAS_EXACT_INTEGERS` / `BASTA_HAS_EXACT_INTEGERS`, the
+exact signed or unsigned value. The capability comes from the header, as blob
+support does (`ALF_HAS_EXACT_INTEGERS`); with older headers numbers still go
+through double, but keep their base. `{variable}` interpolation prints exact
+integers exactly, and no longer casts an out-of-range double before checking
+its range.
+
+Tests: `test_number_base_survives` (every backend) and
+`test_exact_integers_survive` (merge of two inputs, interpolation, `INT64_MIN`,
+`UINT64_MAX`, hex). On the previous code they fail 8 assertions. Against Pasta
+and Basta without exact integers the suite still passes, with the exact test
+compiled out.
+
+No source files added or removed.
+
 ### An unsupported value type is an error, not a silent null
 
 **Suggested by now (2026-09-03).** `alf_value_clone` and pass 1's

@@ -4,12 +4,31 @@
 /*  Shared utilities                                                   */
 /* ------------------------------------------------------------------ */
 
+PastaValue *alf_number_clone(const PastaValue *v) {
+    int fmt = pasta_get_number_fmt(v);
+#ifdef ALF_HAS_EXACT_INTEGERS
+    int64_t  i;
+    uint64_t u;
+    switch (pasta_get_number_kind(v)) {
+    case PASTA_NUMBER_INT64:
+        if (pasta_get_int64(v, &i) == 0) return pasta_new_int64_fmt(i, fmt);
+        break;
+    case PASTA_NUMBER_UINT64:
+        if (pasta_get_uint64(v, &u) == 0) return pasta_new_uint64_fmt(u, fmt);
+        break;
+    default:
+        break;
+    }
+#endif
+    return pasta_new_number_fmt(pasta_get_number(v), fmt);
+}
+
 PastaValue *alf_value_clone(const PastaValue *v) {
     if (!v) return pasta_new_null();
     switch (pasta_type(v)) {
     case PASTA_NULL:   return pasta_new_null();
     case PASTA_BOOL:   return pasta_new_bool(pasta_get_bool(v));
-    case PASTA_NUMBER: return pasta_new_number(pasta_get_number(v));
+    case PASTA_NUMBER: return alf_number_clone(v);
     case PASTA_STRING:
         return pasta_new_string_len(pasta_get_string(v), pasta_get_string_len(v));
     case PASTA_LABEL:

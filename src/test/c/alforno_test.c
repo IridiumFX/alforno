@@ -2644,6 +2644,75 @@ static void test_blob_survives_pipeline(void) {
 }
 #endif /* ALF_USE_BASTA */
 
+/* Numbers keep their base through the pipeline: alforno used to copy every
+   number with pasta_new_number(pasta_get_number(v)), so 0xFF came out 255. */
+static void test_number_base_survives(void) {
+    SUITE("numbers keep their base (hex/bin) through alf_process");
+
+    AlfResult r;
+    AlfContext *ctx = alf_create(ALF_AGGREGATE, &r);
+    ASSERT(ctx != NULL, "create ok");
+    if (!ctx) return;
+    const char *src = "@s { hex: 0xFF, bin: 0b101, dec: 42, f: 1.5 }";
+    ASSERT(alf_add_input(ctx, src, strlen(src), &r) == 0, "add input");
+    PastaValue *out = alf_process(ctx, &r);
+    ASSERT(out != NULL, "process ok");
+    if (out) {
+        const PastaValue *s = pasta_map_get(out, "s");
+        ASSERT(pasta_get_number_fmt(pasta_map_get(s, "hex")) == PASTA_NUM_HEX, "hex stays hex");
+        ASSERT(pasta_get_number_fmt(pasta_map_get(s, "bin")) == PASTA_NUM_BIN, "bin stays bin");
+        ASSERT(pasta_get_number(pasta_map_get(s, "hex")) == 255, "hex value kept");
+        ASSERT(pasta_get_number(pasta_map_get(s, "f")) == 1.5, "float value kept");
+        pasta_free(out);
+    }
+    alf_free(ctx);
+    SUITE_OK();
+}
+
+#if defined(ALF_HAS_EXACT_INTEGERS) || defined(PASTA_HAS_EXACT_INTEGERS)
+/* Integers beyond 2^53 survive every pass exactly once the backend stores
+   them exactly (Pixelinna, 2026-11-17): through a merge of two inputs, and
+   through {variable} interpolation, which used to print via %lld/%g. */
+static void test_exact_integers_survive(void) {
+    SUITE("exact 64-bit integers survive merge and interpolation");
+
+    AlfResult r;
+    AlfContext *ctx = alf_create(ALF_AGGREGATE, &r);
+    ASSERT(ctx != NULL, "create ok");
+    if (!ctx) return;
+    const char *a = "@vars { id: 18446744073709551615 }\n"
+                    "@s { big: 9007199254740993, max: 18446744073709551615,\n"
+                    "     min: -9223372036854775808, hexmax: 0xFFFFFFFFFFFFFFFF,\n"
+                    "     keep: 9007199254740995, name: \"item-{id}\" }";
+    const char *b = "@s { big: 9007199254740997 }";
+    ASSERT(alf_add_input(ctx, a, strlen(a), &r) == 0, "add input a");
+    ASSERT(alf_add_input(ctx, b, strlen(b), &r) == 0, "add input b");
+    PastaValue *out = alf_process(ctx, &r);
+    ASSERT(out != NULL, "process ok");
+    if (out) {
+        const PastaValue *s = pasta_map_get(out, "s");
+        uint64_t u = 0; int64_t i = 0;
+        ASSERT(pasta_get_uint64(pasta_map_get(s, "big"), &u) == 0
+               && u == UINT64_C(9007199254740997), "merged-over value exact (2^53+5)");
+        ASSERT(pasta_get_uint64(pasta_map_get(s, "keep"), &u) == 0
+               && u == UINT64_C(9007199254740995), "carried value exact (2^53+3)");
+        ASSERT(pasta_get_uint64(pasta_map_get(s, "max"), &u) == 0
+               && u == UINT64_MAX, "UINT64_MAX exact");
+        ASSERT(pasta_get_int64(pasta_map_get(s, "min"), &i) == 0
+               && i == INT64_MIN, "INT64_MIN exact");
+        const PastaValue *hx = pasta_map_get(s, "hexmax");
+        ASSERT(pasta_get_uint64(hx, &u) == 0 && u == UINT64_MAX
+               && pasta_get_number_fmt(hx) == PASTA_NUM_HEX, "hex UINT64_MAX exact, still hex");
+        const char *name = pasta_get_string(pasta_map_get(s, "name"));
+        ASSERT(name && strcmp(name, "item-18446744073709551615") == 0,
+               "interpolated integer printed exactly");
+        pasta_free(out);
+    }
+    alf_free(ctx);
+    SUITE_OK();
+}
+#endif
+
 static void test_process_to_string(void) {
     SUITE("alf_process_to_string: basic roundtrip");
 
@@ -2927,6 +2996,10 @@ int main(void) {
     test_process_to_string_error();
     test_empty_string_survives();
     test_link_label_not_string();
+    test_number_base_survives();
+#if defined(ALF_HAS_EXACT_INTEGERS) || defined(PASTA_HAS_EXACT_INTEGERS)
+    test_exact_integers_survive();
+#endif
 #ifdef ALF_USE_BASTA
     test_blob_survives_pipeline();
 #endif
