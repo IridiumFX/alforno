@@ -32,6 +32,22 @@ Current source set (`src/main/c` unless noted):
 
 ## Unreleased
 
+### Interpolation: numbers keep their precision, spelled as the writer spells them
+
+`{variable}` interpolation printed a non-integral number with `%g`, which keeps
+six significant digits: `v: 1.2345678` came out `"1.23457"`, pi as
+`"3.14159"`, and `5e-324` as `"4.94066e-324"`, a different number. Infinities
+and NaN came out as C's `inf` / `nan` rather than the format's `Inf` / `NaN`.
+
+Now the shortest form that reads back as the same double, by the same widening
+loop as Pasta's writer, with `Inf`, `-Inf` and `NaN`. A number interpolated into
+a string is spelled as it would be written as a value. Integers are unchanged.
+
+Test: `test_interpolation_precision`, which fails 8 assertions on the previous
+code. Also checked natively on Windows (MinGW).
+
+No source files added or removed.
+
 ### Windows: open UTF-8 paths outside the ANSI code page
 
 **Requested by Vulpes (2026-11-07).** alforno opened files with plain `fopen`

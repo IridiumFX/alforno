@@ -2809,6 +2809,43 @@ static void test_utf8_paths(void) {
     SUITE_OK();
 }
 
+/* A non-integral number interpolated into a string keeps every digit it
+   needs and reads back as the same double, spelled as the writer spells it.
+   %g kept six significant digits: 1.2345678 came out "1.23457". */
+static void test_interpolation_precision(void) {
+    SUITE("interpolation: shortest round-trip numbers, Inf/NaN spelled as Pasta");
+
+    static const struct { const char *literal, *expected; } cases[] = {
+        { "1.2345678",         "1.2345678" },
+        { "0.1",               "0.1" },
+        { "3.141592653589793", "3.141592653589793" },
+        { "1e300",             "1e+300" },
+        { "5e-324",            "5e-324" },
+        { "-2.5",              "-2.5" },
+        { "Inf",               "Inf" },
+        { "-Inf",              "-Inf" },
+        { "NaN",               "NaN" }
+    };
+    for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
+        char src[256];
+        snprintf(src, sizeof src, "@vars { v: %s }\n@s { s: \"{v}\" }", cases[i].literal);
+        AlfResult r;
+        AlfContext *ctx = alf_create(ALF_AGGREGATE, &r);
+        if (!ctx) { ASSERT(0, "create ok"); return; }
+        alf_add_input(ctx, src, strlen(src), &r);
+        PastaValue *out = alf_process(ctx, &r);
+        const char *s = out ? pasta_get_string(pasta_map_get(pasta_map_get(out, "s"), "s")) : NULL;
+        ASSERT(s && strcmp(s, cases[i].expected) == 0, cases[i].literal);
+        if (s && i < 6) {
+            /* finite values must read back exactly */
+            ASSERT(strtod(s, NULL) == strtod(cases[i].literal, NULL), "reads back as the same double");
+        }
+        pasta_free(out);
+        alf_free(ctx);
+    }
+    SUITE_OK();
+}
+
 static void test_process_to_string(void) {
     SUITE("alf_process_to_string: basic roundtrip");
 
@@ -3094,6 +3131,7 @@ int main(void) {
     test_link_label_not_string();
     test_number_base_survives();
     test_utf8_paths();
+    test_interpolation_precision();
 #if defined(ALF_HAS_EXACT_INTEGERS) || defined(PASTA_HAS_EXACT_INTEGERS)
     test_exact_integers_survive();
 #endif

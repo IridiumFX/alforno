@@ -1,5 +1,26 @@
 #include "alforno_internal.h"
 #include <inttypes.h>
+#include <float.h>
+#include <math.h>
+
+#ifndef DBL_DECIMAL_DIG
+  #define DBL_DECIMAL_DIG 17
+#endif
+
+/* A non-integral number interpolated into a string, spelled as the Pasta
+   writer spells it: the shortest form that reads back as the same double,
+   and the format's own Inf / -Inf / NaN.  Plain %g kept six significant
+   digits, so {v} with v: 1.2345678 came out "1.23457". */
+static void format_double(char *buf, size_t size, double n) {
+    if (isnan(n)) { snprintf(buf, size, "NaN"); return; }
+    if (isinf(n)) { snprintf(buf, size, n < 0 ? "-Inf" : "Inf"); return; }
+    /* Widen until strtod returns the same double; start at 1 so a
+       subnormal finds its short form too (see pasta_writer.c). */
+    for (int prec = 1; prec <= DBL_DECIMAL_DIG; prec++) {
+        snprintf(buf, size, "%.*g", prec, n);
+        if (strtod(buf, NULL) == n) break;
+    }
+}
 
 /* ------------------------------------------------------------------ */
 /*  Simple dynamic byte buffer                                         */
@@ -118,7 +139,7 @@ static char *substitute_str(const char *s, size_t slen,
                 if (n >= -1e15 && n <= 1e15 && n == (long long)n)
                     snprintf(numbuf, sizeof(numbuf), "%lld", (long long)n);
                 else
-                    snprintf(numbuf, sizeof(numbuf), "%g", n);
+                    format_double(numbuf, sizeof(numbuf), n);
                 sv = numbuf;
             } else if (pasta_type(val) == PASTA_BOOL) {
                 sv = pasta_get_bool(val) ? "true" : "false";
