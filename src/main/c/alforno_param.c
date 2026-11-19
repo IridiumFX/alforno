@@ -14,6 +14,8 @@
 static void format_double(char *buf, size_t size, double n) {
     if (isnan(n)) { snprintf(buf, size, "NaN"); return; }
     if (isinf(n)) { snprintf(buf, size, n < 0 ? "-Inf" : "Inf"); return; }
+    /* As the writer does: "-0" would read back as the integer 0. */
+    if (n == 0 && signbit(n)) { snprintf(buf, size, "-0.0"); return; }
     /* Widen until strtod returns the same double; start at 1 so a
        subnormal finds its short form too (see pasta_writer.c). */
     for (int prec = 1; prec <= DBL_DECIMAL_DIG; prec++) {
@@ -135,8 +137,10 @@ static char *substitute_str(const char *s, size_t slen,
                     snprintf(numbuf, sizeof(numbuf), "%" PRIu64, uv);
                 else
 #endif
-                /* Range first: casting an out-of-range double is undefined. */
-                if (n >= -1e15 && n <= 1e15 && n == (long long)n)
+                /* Range first: casting an out-of-range double is undefined.
+                   Negative zero is no integer; format_double spells it. */
+                if (n >= -1e15 && n <= 1e15 && n == (long long)n
+                    && !(n == 0 && signbit(n)))
                     snprintf(numbuf, sizeof(numbuf), "%lld", (long long)n);
                 else
                     format_double(numbuf, sizeof(numbuf), n);

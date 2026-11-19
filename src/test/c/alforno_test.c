@@ -2822,6 +2822,8 @@ static void test_interpolation_precision(void) {
         { "1e300",             "1e+300" },
         { "5e-324",            "5e-324" },
         { "-2.5",              "-2.5" },
+        { "-0.0",              "-0.0" },   /* was "0": the sign was lost */
+        { "-0",                "0" },      /* an integer: no sign        */
         { "Inf",               "Inf" },
         { "-Inf",              "-Inf" },
         { "NaN",               "NaN" }
@@ -2836,11 +2838,33 @@ static void test_interpolation_precision(void) {
         PastaValue *out = alf_process(ctx, &r);
         const char *s = out ? pasta_get_string(pasta_map_get(pasta_map_get(out, "s"), "s")) : NULL;
         ASSERT(s && strcmp(s, cases[i].expected) == 0, cases[i].literal);
-        if (s && i < 6) {
-            /* finite values must read back exactly */
-            ASSERT(strtod(s, NULL) == strtod(cases[i].literal, NULL), "reads back as the same double");
+        /* The value the format gives the literal, not C's: Pasta reads -0
+           as the integer 0, where strtod would give -0.0. */
+        snprintf(src, sizeof src, "{v: %s}", cases[i].literal);
+        PastaResult pr;
+        PastaValue *lit = pasta_parse_cstr(src, &pr);
+        double want = lit ? pasta_get_number(pasta_map_get(lit, "v")) : NAN;
+        pasta_free(lit);
+        if (s && isfinite(want)) {
+            /* finite values must read back exactly, sign of zero included */
+            double got = strtod(s, NULL);
+            ASSERT(got == want && !signbit(got) == !signbit(want), "reads back as the same double");
         }
         pasta_free(out);
+        alf_free(ctx);
+    }
+
+    /* Negative zero also survives the pipeline as a value: cloned with its
+       sign through every pass and written as -0.0, not 0. */
+    {
+        const char *src = "@s { z: -0.0 }";
+        AlfResult r;
+        AlfContext *ctx = alf_create(ALF_AGGREGATE, &r);
+        if (!ctx) { ASSERT(0, "create ok"); return; }
+        alf_add_input(ctx, src, strlen(src), &r);
+        char *str = alf_process_to_string(ctx, PASTA_SECTIONS | PASTA_COMPACT, &r);
+        ASSERT(str && strstr(str, "-0.0") != NULL, "-0.0 written with its sign");
+        free(str);
         alf_free(ctx);
     }
     SUITE_OK();

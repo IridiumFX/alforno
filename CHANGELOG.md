@@ -32,6 +32,23 @@ Current source set (`src/main/c` unless noted):
 
 ## Unreleased
 
+### Negative zero keeps its sign
+
+`v: -0.0` interpolated into a string came out `"0"`. That spelling reads
+back as the integer 0, which has no sign. It now comes out `"-0.0"`, as
+the writer spells it. An integer `-0` still comes out `"0"`.
+
+The value itself passes through every pass with its sign. Its written form
+comes from the backend: Pasta `7794eab` / Basta `c49674b` or later write `-0.0`,
+and older ones write `0`.
+
+Tests: `test_interpolation_precision` gains the two zero cases, which fail 2
+assertions on the previous code, plus a pipeline check that `-0.0` is written
+with its sign. That check fails on an older Pasta or Basta, which is the writer
+bug itself, not a new requirement.
+
+No source files added or removed.
+
 ### Interpolation: numbers keep their precision, spelled as the writer spells them
 
 `{variable}` interpolation printed a non-integral number with `%g`, which keeps
