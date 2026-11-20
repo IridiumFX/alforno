@@ -52,6 +52,23 @@ static char *resolve_path(const char *base_dir, const char *rel) {
 
 #define ALF_MAX_INCLUDE_DEPTH 16
 
+/* A copy of section map `inp` without its @include section, or NULL on
+   allocation failure. */
+static PastaValue *strip_include(const PastaValue *inp) {
+    PastaValue *stripped = pasta_new_map();
+    if (!stripped) return NULL;
+    for (size_t j = 0; j < pasta_count(inp); j++) {
+        const char *key = pasta_map_key(inp, j);
+        if (strcmp(key, "include") == 0) continue;
+        PastaValue *c = alf_value_clone(pasta_map_value(inp, j));
+        if (!c || pasta_set(stripped, key, c)) {
+            pasta_free(c); pasta_free(stripped);
+            return NULL;
+        }
+    }
+    return stripped;
+}
+
 /*
  * Recursively resolve @include sections in a parsed input.
  * seen_paths tracks files to detect cycles (stack-based).
@@ -162,6 +179,21 @@ static int resolve_includes_recursive(AlfContext *ctx,
         }
         free(nested_base);
 
+        /* @include is consumed in an included file too.  Only top-level
+           inputs used to lose it, so a nested file's @include reached the
+           output as a section. */
+        if (pasta_map_get(parsed, "include")) {
+            PastaValue *stripped = strip_include(parsed);
+            if (!stripped) {
+                alf_set_error(result, ALF_ERR_ALLOC, ALF_PASS_SETUP, NULL, "allocation failed");
+                pasta_free(parsed);
+                free(path);
+                return -1;
+            }
+            pasta_free(parsed);
+            parsed = stripped;
+        }
+
         /* Add as input (before current inputs that come after includes) */
         if (ctx->input_count >= ALF_MAX_INPUTS) {
             alf_set_error(result, ALF_ERR_ALLOC, ALF_PASS_SETUP, NULL, "too many inputs");
@@ -199,21 +231,10 @@ int alf_resolve_includes(AlfContext *ctx, AlfResult *result) {
         if (resolve_includes_recursive(ctx, inp, base, seen, 0, result) != 0)
             return -1;
 
-        /* Strip @include from this input */
-        PastaValue *stripped = pasta_new_map();
+        PastaValue *stripped = strip_include(inp);
         if (!stripped) {
             alf_set_error(result, ALF_ERR_ALLOC, ALF_PASS_SETUP, NULL, "allocation failed");
             return -1;
-        }
-        for (size_t j = 0; j < pasta_count(inp); j++) {
-            const char *key = pasta_map_key(inp, j);
-            if (strcmp(key, "include") == 0) continue;
-            PastaValue *c = alf_value_clone(pasta_map_value(inp, j));
-            if (!c || pasta_set(stripped, key, c)) {
-                pasta_free(c); pasta_free(stripped);
-                alf_set_error(result, ALF_ERR_ALLOC, ALF_PASS_SETUP, NULL, "allocation failed");
-                return -1;
-            }
         }
         pasta_free(ctx->inputs[i]);
         ctx->inputs[i] = stripped;

@@ -32,6 +32,18 @@ Current source set (`src/main/c` unless noted):
 
 ## Unreleased
 
+### `@include` in an included file no longer reaches the output
+
+The spec says `@include` is consumed. That was only true for top-level
+inputs. A file brought in by `@include` that had its own `@include` added that
+section to the output, as a section named `include` listing its includes.
+Included files now lose it too.
+
+Test: `test_include_nested` checks that no `include` section comes out. It
+fails on the previous code.
+
+No source files added or removed.
+
 ### Link pass: no ceiling on sections or section-name length
 
 **Reported by Vulpes (2026-11-20).** Pass 4 built its link graph in a fixed

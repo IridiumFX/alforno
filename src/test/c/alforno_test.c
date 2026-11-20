@@ -2375,6 +2375,9 @@ static void test_include_nested(void) {
                "layer_a from nested include");
         /* app from main */
         ASSERT(pasta_map_get(out, "app") != NULL, "app from main");
+        /* inc_nested_a's own @include is consumed like the top level's */
+        ASSERT(pasta_map_get(out, "include") == NULL,
+               "a nested file's @include does not reach the output");
         pasta_free(out);
     }
     alf_free(ctx);
