@@ -50,7 +50,19 @@ static char *resolve_path(const char *base_dir, const char *rel) {
 /*  Include resolution                                                 */
 /* ------------------------------------------------------------------ */
 
-#define ALF_MAX_INCLUDE_DEPTH 16
+/* The files being included, innermost first: a chain through the recursion's
+   own frames, so it needs no fixed array (it was 16 slots). */
+typedef struct SeenPath {
+    const char             *path;
+    const struct SeenPath  *parent;
+    size_t                  depth;   /* files in the chain, this one included */
+} SeenPath;
+
+/* Not a storage limit but a guard.  Paths are compared as spelled, so a
+   cycle spelled two ways (x.pasta including ./x.pasta) is not seen as one;
+   this stops it with an error rather than unbounded recursion.  Legitimate
+   nesting is nowhere near it. */
+#define ALF_MAX_INCLUDE_DEPTH 256
 
 /* A copy of section map `inp` without its @include section, or NULL on
    allocation failure. */
@@ -71,14 +83,14 @@ static PastaValue *strip_include(const PastaValue *inp) {
 
 /*
  * Recursively resolve @include sections in a parsed input.
- * seen_paths tracks files to detect cycles (stack-based).
+ * `seen` is the chain of files currently being included, for cycle detection.
  */
 static int resolve_includes_recursive(AlfContext *ctx,
                                         PastaValue *inp,
                                         const char *base_dir,
-                                        const char **seen_paths,
-                                        size_t seen_count,
+                                        const SeenPath *seen,
                                         AlfResult *result) {
+    size_t seen_count = seen ? seen->depth : 0;
     if (!inp || pasta_type(inp) != PASTA_MAP) return 0;
 
     const PastaValue *inc = pasta_map_get(inp, "include");
@@ -92,7 +104,8 @@ static int resolve_includes_recursive(AlfContext *ctx,
 
     if (seen_count >= ALF_MAX_INCLUDE_DEPTH) {
         alf_set_error(result, ALF_ERR_INCLUDE, ALF_PASS_SETUP, "include",
-                      "include depth limit exceeded");
+                      "includes nested more than 256 deep "
+                      "(a cycle through differently spelled paths?)");
         return -1;
     }
 
@@ -109,8 +122,8 @@ static int resolve_includes_recursive(AlfContext *ctx,
         }
 
         /* Cycle detection */
-        for (size_t s = 0; s < seen_count; s++) {
-            if (strcmp(seen_paths[s], path) == 0) {
+        for (const SeenPath *s = seen; s; s = s->parent) {
+            if (strcmp(s->path, path) == 0) {
                 char msg[320];
                 snprintf(msg, sizeof(msg),
                          "circular include detected: '%s'", rel);
@@ -153,10 +166,7 @@ static int resolve_includes_recursive(AlfContext *ctx,
         }
 
         /* Recursively resolve includes in the parsed file */
-        const char *new_seen[ALF_MAX_INCLUDE_DEPTH];
-        for (size_t s = 0; s < seen_count; s++)
-            new_seen[s] = seen_paths[s];
-        new_seen[seen_count] = path;
+        SeenPath here = { path, seen, seen_count + 1 };
 
         /* Derive base dir for nested includes */
         char *nested_base = alf_strdup(path);
@@ -171,7 +181,7 @@ static int resolve_includes_recursive(AlfContext *ctx,
         }
 
         if (resolve_includes_recursive(ctx, parsed, nested_base ? nested_base : ".",
-                                         new_seen, seen_count + 1, result) != 0) {
+                                         &here, result) != 0) {
             free(nested_base);
             pasta_free(parsed);
             free(path);
@@ -195,13 +205,12 @@ static int resolve_includes_recursive(AlfContext *ctx,
         }
 
         /* Add as input (before current inputs that come after includes) */
-        if (ctx->input_count >= ALF_MAX_INPUTS) {
-            alf_set_error(result, ALF_ERR_ALLOC, ALF_PASS_SETUP, NULL, "too many inputs");
+        if (alf_push_input(ctx, parsed)) {
+            alf_set_error(result, ALF_ERR_ALLOC, ALF_PASS_SETUP, NULL, "allocation failed");
             pasta_free(parsed);
             free(path);
             return -1;
         }
-        ctx->inputs[ctx->input_count++] = parsed;
         free(path);
     }
 
@@ -227,8 +236,7 @@ int alf_resolve_includes(AlfContext *ctx, AlfResult *result) {
         if (!inp || pasta_type(inp) != PASTA_MAP) continue;
         if (!pasta_map_get(inp, "include")) continue;
 
-        const char *seen[ALF_MAX_INCLUDE_DEPTH];
-        if (resolve_includes_recursive(ctx, inp, base, seen, 0, result) != 0)
+        if (resolve_includes_recursive(ctx, inp, base, NULL, result) != 0)
             return -1;
 
         PastaValue *stripped = strip_include(inp);

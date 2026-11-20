@@ -98,26 +98,41 @@ static char *substitute_str(const char *s, size_t slen,
         }
 
         size_t vlen = j - (i + 1);
-        if (vlen == 0 || vlen >= 256) {
-            /* empty or oversized name — treat as literal */
+        if (vlen == 0) {
+            /* empty name — treat as literal */
             if (sbuf_append(&buf, s + i, j - i + 1)) { free(buf.data); return NULL; }
             i = j + 1;
             continue;
         }
 
-        char varname[256];
+        /* Any length: a short name stays on the stack, a long one is
+           allocated.  (Names of 256+ characters used to be skipped as
+           literal text even when @vars defined them.) */
+        char  small[256];
+        char *varname = vlen < sizeof small ? small : (char *)malloc(vlen + 1);
+        if (!varname) { free(buf.data); return NULL; }
         memcpy(varname, s + i + 1, vlen);
         varname[vlen] = '\0';
 
         /* look up in vars map */
         const PastaValue *val = vars ? pasta_map_get(vars, varname) : NULL;
+        if (!val && vlen >= sizeof small) {
+            /* An unmatched brace run this long has always been kept as
+               literal text, never an error; that stays. */
+            if (varname != small) free(varname);
+            if (sbuf_append(&buf, s + i, j - i + 1)) { free(buf.data); return NULL; }
+            i = j + 1;
+            continue;
+        }
         if (!val) {
             char msg[320];
             snprintf(msg, sizeof(msg), "unresolved variable '{%s}'", varname);
             alf_set_error(result, ALF_ERR_UNRESOLVED_VAR, ALF_PASS_PARAM, NULL, msg);
+            if (varname != small) free(varname);
             free(buf.data);
             return NULL;
         }
+        if (varname != small) free(varname);
 
         /* stringify the var value */
         const char *sv = pasta_get_string(val);

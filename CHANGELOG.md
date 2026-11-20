@@ -32,6 +32,48 @@ Current source set (`src/main/c` unless noted):
 
 ## Unreleased
 
+### No fixed limits left: inputs, tags, selectors, variable names, include depth
+
+After the link pass's 64-section cut, we checked every remaining fixed array
+in alforno. Each one became a heap array sized from its input:
+
+| was | at the limit | now |
+|---|---|---|
+| 32 active tags | tags past 32 ignored without an error, so their `when` sections were excluded | no limit |
+| 64 prune / 64 filter selectors | the rest ignored without an error, from both the API and `@prune` / `@filter` | no limit |
+| `{variable}` names under 256 characters | a longer name was kept as literal text, even when `@vars` defined it | substituted at any length |
+| 64 inputs, `@include`d files included | refused as "too many inputs", reported as `ALF_ERR_ALLOC` | no limit |
+| selectors up to 511 characters and 16 segments | longer ones refused as "malformed" | no limit |
+| includes nested 16 deep | refused | guard raised to 256 (below) |
+
+Two of these keep their old behaviour on purpose:
+- **Include depth** keeps a guard, now at 256. Include paths are compared as
+  written, so a cycle spelled two ways (`x.pasta` including `./x.pasta`) is
+  only stopped by the depth limit. The error message now says so. The seen-path
+  list it used is no longer an array.
+- **An unmatched `{...}` of 256+ characters** stays literal text, as it always
+  has. Only a name `@vars` defines is newly substituted. The spec would make an
+  unmatched one a hard error, as it is for shorter names. We did not change that,
+  because doing so could reject existing documents.
+
+Also, `@prune` / `@filter` collection used to ignore an allocation failure
+silently. That could drop a selector, or leave the directive section to be
+written to the output. It is now `ALF_ERR_ALLOC`.
+
+Untouched: `AlfResult.section` and `.message` keep their fixed sizes. They are
+public, so changing them would break ABI, and they truncate by design. The
+other fixed buffers hold values whose maximum size is known: formatted
+numbers, error text, the `fopen` mode.
+
+The spec's Pass 0 now documents the include guard and states that alforno sets
+no other limit.
+
+Test: `test_no_fixed_limits`, with each case past its old limit. The previous
+code fails 11 of its assertions. Checked at -O2 and with ASan+UBSan on Linux,
+and natively with MinGW at -O2 and -O0.
+
+No source files added or removed.
+
 ### `@include` in an included file no longer reaches the output
 
 The spec says `@include` is consumed. That was only true for top-level

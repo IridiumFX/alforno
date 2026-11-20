@@ -22,9 +22,9 @@ static inline char *alf_strdup(const char *s) {
 /*  Context                                                            */
 /* ------------------------------------------------------------------ */
 
-#define ALF_MAX_INPUTS    64
-#define ALF_MAX_TAGS      32
-#define ALF_MAX_SELECTORS 64
+/* Inputs, tags and selectors are heap arrays that grow as needed.  They were
+   fixed (64 inputs, 32 tags, 64 selectors), and tags and selectors past the
+   limit were dropped without an error. */
 
 /* Pipeline pass numbers — single source of truth, mirroring the spec's
    Processing Pipeline.  Reported in AlfResult.pass; changing the pipeline is
@@ -41,18 +41,26 @@ typedef enum {
 
 struct AlfContext {
     AlfOp        op;
-    PastaValue  *recipe;                    /* NULL for aggregate                 */
-    PastaValue  *inputs[ALF_MAX_INPUTS];    /* parsed input section maps          */
-    size_t       input_count;
-    char        *tags[ALF_MAX_TAGS];        /* active tags for conditional when   */
-    size_t       tag_count;
-    char        *base_dir;                /* base dir for include resolution    */
-    AlfPrecedence precedence;            /* gather: LAST_WINS or FIRST_FOUND  */
-    char        *prune_sel[ALF_MAX_SELECTORS];  /* Pass 6 prune selectors        */
-    size_t       prune_count;
-    char        *filter_sel[ALF_MAX_SELECTORS]; /* Pass 6 filter selectors       */
-    size_t       filter_count;
+    PastaValue  *recipe;                 /* NULL for aggregate                 */
+    PastaValue **inputs;                 /* parsed input section maps          */
+    size_t       input_count, input_cap;
+    char       **tags;                   /* active tags for conditional when   */
+    size_t       tag_count, tag_cap;
+    char        *base_dir;               /* base dir for include resolution    */
+    AlfPrecedence precedence;            /* gather: LAST_WINS or FIRST_FOUND   */
+    char       **prune_sel;              /* Pass 6 prune selectors             */
+    size_t       prune_count, prune_cap;
+    char       **filter_sel;             /* Pass 6 filter selectors            */
+    size_t       filter_count, filter_cap;
 };
+
+/* Append v to ctx->inputs, growing it.  0, or -1 on allocation failure, in
+   which case v is still the caller's. */
+int alf_push_input(AlfContext *ctx, PastaValue *v);
+
+/* Append a copy of s to a growable string array.  0, or -1 on allocation
+   failure (the array is unchanged). */
+int alf_push_str(char ***arr, size_t *count, size_t *cap, const char *s);
 
 /* ------------------------------------------------------------------ */
 /*  Error helper                                                       */

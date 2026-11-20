@@ -54,7 +54,7 @@ Both operations execute the same pipeline in strict order.
 
 ### Pass 0 — Include Resolution
 
-If any input pastlet contains an `@include` section (an array of file paths), alforno reads and parses each referenced file and adds it as an additional input. Includes are resolved recursively. Circular includes are a **hard error**. File paths are relative to the including file's directory (or the configured base directory). `@include` is consumed and does not appear in the output.
+If any input pastlet contains an `@include` section (an array of file paths), alforno reads and parses each referenced file and adds it as an additional input. Includes are resolved recursively, and an included file's own `@include` is consumed the same way. Circular includes are a **hard error**. Paths are compared as written, so a cycle spelled two ways (`x.pasta` including `./x.pasta`) is caught by a nesting guard instead: includes nested more than 256 files deep are a **hard error**. alforno sets no other limit on inputs, sections, tags, selectors or name lengths. File paths are relative to the including file's directory (or the configured base directory). `@include` is consumed and does not appear in the output.
 
 ### Pass 1 — Parameterize
 

@@ -2964,6 +2964,202 @@ static void test_link_no_section_ceiling(void) {
     SUITE_OK();
 }
 
+/* Run one aggregate over `src` with optional tags / prune / filter lists. */
+static PastaValue *run_lists(const char *src, const char **tags, size_t ntags,
+                             const char **prune, size_t nprune,
+                             const char **filter, size_t nfilter,
+                             AlfResult *r) {
+    AlfContext *ctx = alf_create(ALF_AGGREGATE, r);
+    if (!ctx) return NULL;
+    if (ntags)   alf_set_tags(ctx, tags, ntags, r);
+    if (nprune)  alf_set_prune(ctx, prune, nprune, r);
+    if (nfilter) alf_set_filter(ctx, filter, nfilter, r);
+    alf_add_input(ctx, src, strlen(src), r);
+    PastaValue *out = alf_process(ctx, r);
+    alf_free(ctx);
+    return out;
+}
+
+/* Every fixed array in alforno is gone.  Each case below sits past the old
+   limit, where entries were dropped silently (tags, selectors, long variable
+   names) or refused under a misleading error (inputs, long selectors, include
+   depth). */
+static void test_no_fixed_limits(void) {
+    SUITE("no fixed limits: inputs, tags, selectors, names, include depth");
+    enum { K = 100 };
+    static char names[K][16];
+    const char *list[K];
+    for (int i = 0; i < K; i++) {
+        snprintf(names[i], sizeof names[i], "t%d", i + 1);
+        list[i] = names[i];
+    }
+    char *src = (char *)malloc(K * 64 + 4096), *p;
+    if (!src) { ASSERT(0, "alloc"); return; }
+    AlfResult r;
+    PastaValue *out;
+
+    /* 100 inputs (was 64, then "too many inputs" as ALF_ERR_ALLOC). */
+    {
+        AlfContext *ctx = alf_create(ALF_AGGREGATE, &r);
+        int ok = ctx != NULL;
+        for (int i = 0; ctx && i < K; i++) {
+            char one[64];
+            snprintf(one, sizeof one, "@in%d { k: %d }", i + 1, i + 1);
+            if (alf_add_input(ctx, one, strlen(one), &r) != 0) ok = 0;
+        }
+        ASSERT(ok, "100 inputs accepted");
+        out = ctx ? alf_process(ctx, &r) : NULL;
+        ASSERT(out && pasta_count(out) == K, "100 inputs, 100 sections out");
+        pasta_free(out);
+        alf_free(ctx);
+    }
+
+    /* 100 active tags (was 32: tags 33+ ignored, their sections excluded). */
+    p = src;
+    for (int i = 0; i < K; i++)
+        p += sprintf(p, "@w%d { when: \"t%d\", k: %d }\n", i + 1, i + 1, i);
+    out = run_lists(src, list, K, NULL, 0, NULL, 0, &r);
+    ASSERT(out && pasta_count(out) == K, "100 tags, every guarded section kept");
+    pasta_free(out);
+
+    /* 100 prune / filter selectors through the API (was 64 each). */
+    const char *sel[K];
+    static char selbuf[K][16];
+    p = src;
+    for (int i = 0; i < K; i++) {
+        p += sprintf(p, "@t%d { k: %d }\n", i + 1, i);
+        snprintf(selbuf[i], sizeof selbuf[i], "@t%d", i + 1);
+        sel[i] = selbuf[i];
+    }
+    p += sprintf(p, "@keep { k: 0 }\n");
+    out = run_lists(src, NULL, 0, sel, K, NULL, 0, &r);
+    ASSERT(out && pasta_count(out) == 1 && pasta_map_get(out, "keep"),
+           "100 prune selectors, all applied");
+    pasta_free(out);
+    out = run_lists(src, NULL, 0, NULL, 0, sel, K, &r);
+    ASSERT(out && pasta_count(out) == K && !pasta_map_get(out, "keep"),
+           "100 filter selectors, all applied");
+    pasta_free(out);
+
+    /* The same through an @prune directive of 100 entries. */
+    {
+        size_t len = strlen(src);
+        char *q = src + len;
+        q += sprintf(q, "@prune [");
+        for (int i = 0; i < K; i++) q += sprintf(q, "%s\"@t%d\"", i ? ", " : "", i + 1);
+        sprintf(q, "]\n");
+        out = run_lists(src, NULL, 0, NULL, 0, NULL, 0, &r);
+        ASSERT(out && pasta_count(out) == 1 && pasta_map_get(out, "keep"),
+               "@prune with 100 selectors, all applied");
+        pasta_free(out);
+    }
+
+    /* A 20-segment selector and one of 600+ characters (was 16 segments and
+       511 characters, else "malformed"). */
+    {
+        p = src;
+        p += sprintf(p, "@deep { ");
+        for (int i = 0; i < 20; i++) p += sprintf(p, "k%d: { ", i);
+        p += sprintf(p, "leaf: 1, gone: 2");
+        for (int i = 0; i < 20; i++) p += sprintf(p, " }");
+        p += sprintf(p, " }\n");
+        char dsel[256], *d = dsel;
+        d += sprintf(d, "@deep");
+        for (int i = 0; i < 20; i++) d += sprintf(d, "/k%d", i);
+        sprintf(d, "/gone");
+        const char *one = dsel;
+        out = run_lists(src, NULL, 0, &one, 1, NULL, 0, &r);
+        const PastaValue *n = out ? pasta_map_get(out, "deep") : NULL;
+        for (int i = 0; n && i < 20; i++) {
+            char k[8]; snprintf(k, sizeof k, "k%d", i);
+            n = pasta_map_get(n, k);
+        }
+        ASSERT(n && pasta_map_get(n, "leaf") && !pasta_map_get(n, "gone"),
+               "21-segment selector prunes its leaf");
+        pasta_free(out);
+
+        char lname[601];
+        memset(lname, 'L', 600); lname[600] = '\0';
+        snprintf(src, K * 64 + 4096, "@%s { k: 1 }\n@other { k: 2 }", lname);
+        char lsel[603];
+        snprintf(lsel, sizeof lsel, "@%s", lname);
+        one = lsel;
+        out = run_lists(src, NULL, 0, &one, 1, NULL, 0, &r);
+        ASSERT(out && r.code == ALF_OK && pasta_count(out) == 1
+               && pasta_map_get(out, "other"), "600-character selector applied");
+        pasta_free(out);
+    }
+
+    /* A 300-character variable name defined in @vars (was skipped as
+       literal text past 255); an unmatched long run stays literal. */
+    {
+        char vname[301], wname[301];
+        memset(vname, 'v', 300); vname[300] = '\0';
+        memset(wname, 'w', 300); wname[300] = '\0';   /* not in @vars */
+        snprintf(src, K * 64 + 4096,
+                 "@vars { %s: \"yes\" }\n@s { a: \"{%s}\", b: \"{%s}\" }",
+                 vname, vname, wname);
+        out = run_lists(src, NULL, 0, NULL, 0, NULL, 0, &r);
+        const PastaValue *s = out ? pasta_map_get(out, "s") : NULL;
+        const char *a = s ? pasta_get_string(pasta_map_get(s, "a")) : NULL;
+        const char *b = s ? pasta_get_string(pasta_map_get(s, "b")) : NULL;
+        ASSERT(a && strcmp(a, "yes") == 0, "300-character variable substituted");
+        ASSERT(b && strlen(b) == 302 && b[0] == '{', "unmatched long {...} kept literal");
+        pasta_free(out);
+    }
+
+    /* 40 nested include files (was 16, "include depth limit exceeded"),
+       and a cycle spelled through ./ is still stopped by the guard. */
+    {
+        const char *dir = "alf_deep_inc";
+        char path[128], body[128];
+        u8_mkdir(dir);
+        for (int i = 1; i <= 40; i++) {
+            snprintf(path, sizeof path, "%s/d%d.pasta", dir, i);
+            if (i < 40) snprintf(body, sizeof body, "@include [\"d%d.pasta\"]\n@l%d { k: %d }", i + 1, i, i);
+            else        snprintf(body, sizeof body, "@l%d { k: %d }", i, i);
+            u8_write(path, body);
+        }
+        snprintf(path, sizeof path, "%s/x.pasta", dir);
+        u8_write(path, "@include [\"./x.pasta\"]\n@x { k: 1 }");
+
+        AlfContext *ctx = alf_create(ALF_AGGREGATE, &r);
+        if (ctx) {
+            alf_set_base_dir(ctx, dir, &r);
+            const char *top = "@include [\"d1.pasta\"]\n@top { k: 0 }";
+            alf_add_input(ctx, top, strlen(top), &r);
+            out = alf_process(ctx, &r);
+            ASSERT(out && r.code == ALF_OK && pasta_count(out) == 41,
+                   "40 nested includes resolved");
+            ASSERT(out && !pasta_map_get(out, "include"),
+                   "a nested file's @include is consumed, not output");
+            pasta_free(out);
+            alf_free(ctx);
+        }
+        ctx = alf_create(ALF_AGGREGATE, &r);
+        if (ctx) {
+            alf_set_base_dir(ctx, dir, &r);
+            const char *top = "@include [\"x.pasta\"]";
+            alf_add_input(ctx, top, strlen(top), &r);
+            out = alf_process(ctx, &r);
+            ASSERT(!out && r.code == ALF_ERR_INCLUDE,
+                   "a cycle spelled ./x.pasta still ends in an error");
+            pasta_free(out);
+            alf_free(ctx);
+        }
+        for (int i = 1; i <= 40; i++) {
+            snprintf(path, sizeof path, "%s/d%d.pasta", dir, i);
+            u8_remove(path);
+        }
+        snprintf(path, sizeof path, "%s/x.pasta", dir);
+        u8_remove(path);
+        u8_rmdir(dir);
+    }
+
+    free(src);
+    SUITE_OK();
+}
+
 static void test_process_to_string(void) {
     SUITE("alf_process_to_string: basic roundtrip");
 
@@ -3251,6 +3447,7 @@ int main(void) {
     test_utf8_paths();
     test_interpolation_precision();
     test_link_no_section_ceiling();
+    test_no_fixed_limits();
 #if defined(ALF_HAS_EXACT_INTEGERS) || defined(PASTA_HAS_EXACT_INTEGERS)
     test_exact_integers_survive();
 #endif

@@ -298,48 +298,57 @@ ALF_API int alf_add_input_file(AlfContext *ctx, const char *path,
     return rc;
 }
 
+int alf_push_str(char ***arr, size_t *count, size_t *cap, const char *s) {
+    if (*count == *cap) {
+        size_t nc = *cap ? *cap * 2 : 8;
+        char **t = (char **)realloc(*arr, nc * sizeof *t);
+        if (!t) return -1;
+        *arr = t;
+        *cap = nc;
+    }
+    char *d = alf_strdup(s);
+    if (!d) return -1;
+    (*arr)[(*count)++] = d;
+    return 0;
+}
+
+int alf_push_input(AlfContext *ctx, PastaValue *v) {
+    if (ctx->input_count == ctx->input_cap) {
+        size_t nc = ctx->input_cap ? ctx->input_cap * 2 : 8;
+        PastaValue **t = (PastaValue **)realloc(ctx->inputs, nc * sizeof *t);
+        if (!t) return -1;
+        ctx->inputs    = t;
+        ctx->input_cap = nc;
+    }
+    ctx->inputs[ctx->input_count++] = v;
+    return 0;
+}
+
+/* Shared setter for the tag and selector lists: replaces any prior set,
+   keeping every entry (no count limit). */
+static int alf_set_strings(char ***arr, size_t *count, size_t *cap,
+                            const char **src, size_t n, AlfResult *result) {
+    for (size_t i = 0; i < *count; i++) free((*arr)[i]);
+    *count = 0;
+    for (size_t i = 0; i < n; i++) {
+        if (alf_push_str(arr, count, cap, src[i])) {
+            alf_set_error(result, ALF_ERR_ALLOC, ALF_PASS_SETUP, NULL,
+                          "allocation failed");
+            return -1;
+        }
+    }
+    if (result) { result->code = ALF_OK; result->pass = ALF_PASS_SETUP; }
+    return 0;
+}
+
 ALF_API int alf_set_tags(AlfContext *ctx, const char **tags, size_t count,
                            AlfResult *result) {
     if (!ctx) {
         alf_set_error(result, ALF_ERR_ALLOC, ALF_PASS_SETUP, NULL, "null context");
         return -1;
     }
-    /* Free any previously set tags */
-    for (size_t i = 0; i < ctx->tag_count; i++)
-        free(ctx->tags[i]);
-    ctx->tag_count = 0;
-
-    size_t n = count < ALF_MAX_TAGS ? count : ALF_MAX_TAGS;
-    for (size_t i = 0; i < n; i++) {
-        ctx->tags[i] = alf_strdup(tags[i]);
-        if (!ctx->tags[i]) {
-            alf_set_error(result, ALF_ERR_ALLOC, ALF_PASS_SETUP, NULL, "allocation failed");
-            return -1;
-        }
-        ctx->tag_count++;
-    }
-    if (result) { result->code = ALF_OK; result->pass = ALF_PASS_SETUP; }
-    return 0;
-}
-
-/* Shared setter for the prune/filter selector lists (replaces any prior set). */
-static int alf_set_selectors(char **sel, size_t *count,
-                              const char **selectors, size_t n,
-                              AlfResult *result) {
-    for (size_t i = 0; i < *count; i++) free(sel[i]);
-    *count = 0;
-    size_t m = n < ALF_MAX_SELECTORS ? n : ALF_MAX_SELECTORS;
-    for (size_t i = 0; i < m; i++) {
-        sel[i] = alf_strdup(selectors[i]);
-        if (!sel[i]) {
-            alf_set_error(result, ALF_ERR_ALLOC, ALF_PASS_SETUP, NULL,
-                          "allocation failed");
-            return -1;
-        }
-        (*count)++;
-    }
-    if (result) { result->code = ALF_OK; result->pass = ALF_PASS_SETUP; }
-    return 0;
+    return alf_set_strings(&ctx->tags, &ctx->tag_count, &ctx->tag_cap,
+                           tags, count, result);
 }
 
 ALF_API int alf_set_prune(AlfContext *ctx, const char **selectors, size_t count,
@@ -348,8 +357,8 @@ ALF_API int alf_set_prune(AlfContext *ctx, const char **selectors, size_t count,
         alf_set_error(result, ALF_ERR_ALLOC, ALF_PASS_SETUP, NULL, "null context");
         return -1;
     }
-    return alf_set_selectors(ctx->prune_sel, &ctx->prune_count,
-                             selectors, count, result);
+    return alf_set_strings(&ctx->prune_sel, &ctx->prune_count, &ctx->prune_cap,
+                           selectors, count, result);
 }
 
 ALF_API int alf_set_filter(AlfContext *ctx, const char **selectors, size_t count,
@@ -358,8 +367,8 @@ ALF_API int alf_set_filter(AlfContext *ctx, const char **selectors, size_t count
         alf_set_error(result, ALF_ERR_ALLOC, ALF_PASS_SETUP, NULL, "null context");
         return -1;
     }
-    return alf_set_selectors(ctx->filter_sel, &ctx->filter_count,
-                             selectors, count, result);
+    return alf_set_strings(&ctx->filter_sel, &ctx->filter_count, &ctx->filter_cap,
+                           selectors, count, result);
 }
 
 ALF_API AlfContext *alf_create(AlfOp op, AlfResult *result) {
@@ -416,10 +425,6 @@ ALF_API int alf_add_input(AlfContext *ctx, const char *src, size_t len,
         alf_set_error(result, ALF_ERR_PARSE, ALF_PASS_SETUP, NULL, "null argument");
         return -1;
     }
-    if (ctx->input_count >= ALF_MAX_INPUTS) {
-        alf_set_error(result, ALF_ERR_ALLOC, ALF_PASS_SETUP, NULL, "too many inputs");
-        return -1;
-    }
 
     PastaResult pr;
     PastaValue *v = pasta_parse(src, len, &pr);
@@ -437,7 +442,11 @@ ALF_API int alf_add_input(AlfContext *ctx, const char *src, size_t len,
         pasta_free(v);
         return -1;
     }
-    ctx->inputs[ctx->input_count++] = v;
+    if (alf_push_input(ctx, v)) {
+        alf_set_error(result, ALF_ERR_ALLOC, ALF_PASS_SETUP, NULL, "allocation failed");
+        pasta_free(v);
+        return -1;
+    }
     if (result) { result->code = ALF_OK; result->pass = ALF_PASS_SETUP; }
     return 0;
 }
@@ -475,7 +484,10 @@ ALF_API PastaValue *alf_process(AlfContext *ctx, AlfResult *result) {
 
     /* Collect @prune / @filter directive selectors and strip those sections
        from the inputs (so they never reach the merged output). */
-    alf_collect_select_directives(ctx, &local);
+    if (alf_collect_select_directives(ctx, &local) != 0) {
+        if (result) *result = local;
+        return NULL;
+    }
 
     /* Pass 3: merge */
     PastaValue *output = alf_pass3_merge(ctx, &local);
@@ -615,6 +627,10 @@ ALF_API void alf_free(AlfContext *ctx) {
         free(ctx->prune_sel[i]);
     for (size_t i = 0; i < ctx->filter_count; i++)
         free(ctx->filter_sel[i]);
+    free(ctx->inputs);
+    free(ctx->tags);
+    free(ctx->prune_sel);
+    free(ctx->filter_sel);
     free(ctx->base_dir);
     free(ctx);
 }
