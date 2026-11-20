@@ -30,7 +30,7 @@ static PastaValue *do_aggregate(AlfContext *ctx, AlfResult *result) {
                 /* Merge or replace */
                 PastaValue *merged = alf_section_merge(existing, val);
                 if (!merged) {
-                    alf_set_error(result, ALF_ERR_ALLOC, ALF_PASS_MERGE, key, "allocation failed");
+                    alf_set_error_at(ctx, result, ALF_ERR_ALLOC, ALF_PASS_MERGE, key, "allocation failed");
                     pasta_free(out);
                     return NULL;
                 }
@@ -64,7 +64,7 @@ static PastaValue *do_aggregate(AlfContext *ctx, AlfResult *result) {
                 PastaValue *c = alf_value_clone(val);
                 if (!c || pasta_set(out, key, c)) {
                     pasta_free(c); pasta_free(out);
-                    alf_set_error(result, ALF_ERR_ALLOC, ALF_PASS_MERGE, key, "allocation failed");
+                    alf_set_error_at(ctx, result, ALF_ERR_ALLOC, ALF_PASS_MERGE, key, "allocation failed");
                     return NULL;
                 }
             }
@@ -320,13 +320,14 @@ static PastaValue *gather_consumes_collect(AlfContext *ctx,
  * rule:   the recipe section map (consumes + field descriptors).
  * Returns a fresh map containing only the recipe-declared fields.
  */
-static PastaValue *build_conflated_section(const PastaValue *merged,
+static PastaValue *build_conflated_section(AlfContext *ctx,
+                                            const PastaValue *merged,
                                             const PastaValue *rule,
                                             const char *secname,
                                             AlfResult *result) {
     PastaValue *out = pasta_new_map();
     if (!out) {
-        alf_set_error(result, ALF_ERR_ALLOC, ALF_PASS_MERGE, secname, "allocation failed");
+        alf_set_error_at(ctx, result, ALF_ERR_ALLOC, ALF_PASS_MERGE, secname, "allocation failed");
         return NULL;
     }
 
@@ -345,7 +346,7 @@ static PastaValue *build_conflated_section(const PastaValue *merged,
         PastaValue *c = alf_value_clone(fval);
         if (!c || pasta_set(out, field, c)) {
             pasta_free(c); pasta_free(out);
-            alf_set_error(result, ALF_ERR_ALLOC, ALF_PASS_MERGE, secname, "allocation failed");
+            alf_set_error_at(ctx, result, ALF_ERR_ALLOC, ALF_PASS_MERGE, secname, "allocation failed");
             return NULL;
         }
     }
@@ -370,7 +371,7 @@ static PastaValue *do_conflate(AlfContext *ctx, AlfResult *result) {
         const PastaValue *rule = pasta_map_value(ctx->recipe, ri);
 
         if (pasta_type(rule) != PASTA_MAP) {
-            alf_set_error(result, ALF_ERR_BAD_RECIPE, ALF_PASS_MERGE, secname,
+            alf_set_error_at(ctx, result, ALF_ERR_BAD_RECIPE, ALF_PASS_MERGE, secname,
                           "recipe section must be a map");
             pasta_free(out);
             return NULL;
@@ -379,7 +380,7 @@ static PastaValue *do_conflate(AlfContext *ctx, AlfResult *result) {
         const PastaValue *consumes = pasta_map_get(rule, "consumes");
         if (!consumes || pasta_type(consumes) != PASTA_ARRAY
                       || pasta_count(consumes) == 0) {
-            alf_set_error(result, ALF_ERR_MISSING_CONSUMES, ALF_PASS_MERGE, secname,
+            alf_set_error_at(ctx, result, ALF_ERR_MISSING_CONSUMES, ALF_PASS_MERGE, secname,
                           "recipe section missing 'consumes' array");
             pasta_free(out);
             return NULL;
@@ -398,7 +399,7 @@ static PastaValue *do_conflate(AlfContext *ctx, AlfResult *result) {
                 char msg[320];
                 snprintf(msg, sizeof(msg),
                          "unknown merge strategy '%s' (expected 'replace', 'collect', or 'deep')", ms);
-                alf_set_error(result, ALF_ERR_BAD_RECIPE, ALF_PASS_MERGE, secname, msg);
+                alf_set_error_at(ctx, result, ALF_ERR_BAD_RECIPE, ALF_PASS_MERGE, secname, msg);
                 pasta_free(out);
                 return NULL;
             }
@@ -412,13 +413,13 @@ static PastaValue *do_conflate(AlfContext *ctx, AlfResult *result) {
         }
         /* merged may be NULL if no inputs matched — that's OK, fields will be absent */
 
-        PastaValue *sec = build_conflated_section(merged, rule, secname, result);
+        PastaValue *sec = build_conflated_section(ctx, merged, rule, secname, result);
         pasta_free(merged);
         if (!sec) { pasta_free(out); return NULL; }
 
         if (pasta_set(out, secname, sec)) {
             pasta_free(sec); pasta_free(out);
-            alf_set_error(result, ALF_ERR_ALLOC, ALF_PASS_MERGE, secname, "allocation failed");
+            alf_set_error_at(ctx, result, ALF_ERR_ALLOC, ALF_PASS_MERGE, secname, "allocation failed");
             return NULL;
         }
     }
@@ -488,7 +489,7 @@ static PastaValue *do_gather(AlfContext *ctx, AlfResult *result) {
                     /* First-found: merge at field level, keeping existing fields */
                     PastaValue *merged = alf_first_found_merge(existing, val);
                     if (!merged) {
-                        alf_set_error(result, ALF_ERR_ALLOC, ALF_PASS_MERGE, key, "allocation failed");
+                        alf_set_error_at(ctx, result, ALF_ERR_ALLOC, ALF_PASS_MERGE, key, "allocation failed");
                         pasta_free(out); return NULL;
                     }
                     /* Rebuild output with merged section */
@@ -519,7 +520,7 @@ static PastaValue *do_gather(AlfContext *ctx, AlfResult *result) {
                     /* Last-wins: same as aggregate */
                     PastaValue *merged = alf_section_merge(existing, val);
                     if (!merged) {
-                        alf_set_error(result, ALF_ERR_ALLOC, ALF_PASS_MERGE, key, "allocation failed");
+                        alf_set_error_at(ctx, result, ALF_ERR_ALLOC, ALF_PASS_MERGE, key, "allocation failed");
                         pasta_free(out); return NULL;
                     }
                     PastaValue *rebuilt = pasta_new_map();
@@ -550,7 +551,7 @@ static PastaValue *do_gather(AlfContext *ctx, AlfResult *result) {
                 PastaValue *c = alf_value_clone(val);
                 if (!c || pasta_set(out, key, c)) {
                     pasta_free(c); pasta_free(out);
-                    alf_set_error(result, ALF_ERR_ALLOC, ALF_PASS_MERGE, key, "allocation failed");
+                    alf_set_error_at(ctx, result, ALF_ERR_ALLOC, ALF_PASS_MERGE, key, "allocation failed");
                     return NULL;
                 }
             }

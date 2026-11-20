@@ -3160,6 +3160,48 @@ static void test_no_fixed_limits(void) {
     SUITE_OK();
 }
 
+#ifndef ALF_RESULT_SECTION_IS_POINTER
+#error "alforno.h should declare AlfResult.section as a pointer"
+#endif
+
+/* AlfResult.section was char[64]: an error about a section named with 64+
+   characters reported a cut-down name.  It now points at the full name,
+   owned by the context. */
+static void test_result_section_full_name(void) {
+    SUITE("AlfResult.section: full section name, never NULL");
+
+    char name[201];
+    memset(name, 's', 200);
+    name[200] = '\0';
+    char recipe[512], src[512];
+    snprintf(recipe, sizeof recipe,
+             "@%s { consumes: [\"%s\"], port: \"required number\" }", name, name);
+    snprintf(src, sizeof src, "@%s { host: \"h\" }", name);
+
+    AlfResult r;
+    AlfContext *ctx = alf_create(ALF_CONFLATE, &r);
+    if (!ctx) { ASSERT(0, "create ok"); return; }
+    ASSERT(r.section && r.section[0] == '\0', "section is \"\" after create");
+    alf_set_recipe(ctx, recipe, strlen(recipe), &r);
+    alf_add_input(ctx, src, strlen(src), &r);
+    ASSERT(r.code == ALF_OK && r.section && r.section[0] == '\0',
+           "section is \"\" after a successful call");
+    PastaValue *out = alf_process(ctx, &r);
+    ASSERT(!out && r.code == ALF_ERR_VALIDATION, "validation error");
+    ASSERT(r.section && strlen(r.section) == 200, "all 200 characters reported");
+    ASSERT(r.section && strcmp(r.section, name) == 0, "the name exactly");
+    alf_free(ctx);
+
+    /* An error with no section to name: "" rather than NULL. */
+    ctx = alf_create(ALF_AGGREGATE, &r);
+    if (!ctx) { ASSERT(0, "create ok"); return; }
+    const char *bad = "@a { x: ";
+    ASSERT(alf_add_input(ctx, bad, strlen(bad), &r) != 0, "parse error");
+    ASSERT(r.section && r.section[0] == '\0', "no section: \"\", not NULL");
+    alf_free(ctx);
+    SUITE_OK();
+}
+
 static void test_process_to_string(void) {
     SUITE("alf_process_to_string: basic roundtrip");
 
@@ -3448,6 +3490,7 @@ int main(void) {
     test_interpolation_precision();
     test_link_no_section_ceiling();
     test_no_fixed_limits();
+    test_result_section_full_name();
 #if defined(ALF_HAS_EXACT_INTEGERS) || defined(PASTA_HAS_EXACT_INTEGERS)
     test_exact_integers_survive();
 #endif

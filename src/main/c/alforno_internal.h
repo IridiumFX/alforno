@@ -52,6 +52,8 @@ struct AlfContext {
     size_t       prune_count, prune_cap;
     char       **filter_sel;             /* Pass 6 filter selectors            */
     size_t       filter_count, filter_cap;
+    char        *err_section;            /* AlfResult.section text it points at */
+    size_t       err_section_cap;
 };
 
 /* Append v to ctx->inputs, growing it.  0, or -1 on allocation failure, in
@@ -66,20 +68,33 @@ int alf_push_str(char ***arr, size_t *count, size_t *cap, const char *s);
 /*  Error helper                                                       */
 /* ------------------------------------------------------------------ */
 
+/* `section` must be NULL or a string literal: the result points at it as is.
+   For a name taken from the document, use alf_set_error_at. */
 static inline void alf_set_error(AlfResult *r, AlfError code, int pass,
                                    const char *section, const char *msg) {
     if (!r) return;
-    r->code = code;
-    r->pass = pass;
-    /* Both fields are fixed-size and truncate by design; the explicit
-       precision says so, which is what -Wformat-truncation asks for. */
-    if (section)
-        snprintf(r->section, sizeof(r->section), "%.*s",
-                 (int)sizeof(r->section) - 1, section);
-    else
-        r->section[0] = '\0';
+    r->code    = code;
+    r->pass    = pass;
+    r->section = section ? section : "";
+    /* message is fixed-size and truncates by design; the explicit precision
+       says so, which is what -Wformat-truncation asks for. */
     snprintf(r->message, sizeof(r->message), "%.*s",
              (int)sizeof(r->message) - 1, msg);
+}
+
+/* As alf_set_error, for a section name the document owns (and may free
+   before the result is read): the full name is copied into ctx, which owns
+   it until the next error naming a section, or alf_free.  If that copy
+   cannot be allocated, the error is still reported, with section "". */
+void alf_set_error_at(AlfContext *ctx, AlfResult *r, AlfError code, int pass,
+                      const char *section, const char *msg);
+
+/* Mark r successful at `pass`; section becomes "" (message is left as is). */
+static inline void alf_set_ok(AlfResult *r, int pass) {
+    if (!r) return;
+    r->code    = ALF_OK;
+    r->pass    = pass;
+    r->section = "";
 }
 
 /* ------------------------------------------------------------------ */

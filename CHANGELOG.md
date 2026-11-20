@@ -32,6 +32,44 @@ Current source set (`src/main/c` unless noted):
 
 ## Unreleased
 
+### BREAKING (rebuild required): `AlfResult.section` is the full section name
+
+**Every consumer must rebuild.** The `AlfResult` struct layout changed.
+
+`AlfResult.section` was `char section[64]`, so an error about a section named
+with 64 or more characters reported a shortened name. Section names have no
+length limit since `33a8fd0`, so the error report now has none either:
+
+```c
+const char *section;   /* was: char section[64] */
+```
+
+- **Full name.** It points at the complete section name, or at `""` when no
+  section applies. It is never NULL once a call has filled the result.
+- **Owned by the context.** It stays valid until the next call on that context,
+  or `alf_free`. Copy it if you need it longer. Errors that cannot name a
+  section, such as `alf_create` failing, point at `""`.
+- **Source compatibility.** `printf("%s", r.section)`, `r.section[0]` and
+  `strcmp` / `strncpy` from it compile unchanged. `sizeof(r.section)` now gives
+  the size of a pointer, and writing into `section` no longer compiles.
+- **Detection.** `ALF_RESULT_SECTION_IS_POINTER` is defined in `alforno.h`, for
+  code that must build against both forms.
+
+`message` keeps its fixed 256 bytes.
+
+Requested by the user, following Vulpes' report on long section names.
+
+Inside alforno: section names taken from the document go through a new
+`alf_set_error_at(ctx, ...)`, which copies the name into the context. A
+literal (`"include"`, `"vars"`) is pointed at directly.
+
+Test: `test_result_section_full_name`. It uses a 200-character section with a
+validation error, and checks `""` after success and after an error with no
+section. On the previous code the same error reported 63 of the 200
+characters.
+
+No source files added or removed.
+
 ### No fixed limits left: inputs, tags, selectors, variable names, include depth
 
 After the link pass's 64-section cut, we checked every remaining fixed array

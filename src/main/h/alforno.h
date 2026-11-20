@@ -67,11 +67,22 @@ typedef enum {
 
 /* ---- Result info ---- */
 
+/* `section` names the section an error is about, in full, or is "" when none
+   applies; it is never NULL once a call has filled the result.  The text is
+   owned by the context: valid until the next call on that context, or
+   alf_free.  Copy it to keep it longer.
+
+   It was `char section[64]`, which cut longer names short.  Code that prints
+   it or tests section[0] is unchanged; code that used sizeof(r.section) must
+   change, and every consumer must rebuild (the struct layout changed).
+   ALF_RESULT_SECTION_IS_POINTER marks this form. */
+#define ALF_RESULT_SECTION_IS_POINTER 1
+
 typedef struct {
-    AlfError code;
-    int      pass;          /* 0=setup 1=param 2=when 3=merge 4=link 5=validate 6=select */
-    char     section[64];   /* section name if relevant, else empty   */
-    char     message[256];
+    AlfError    code;
+    int         pass;       /* 0=setup 1=param 2=when 3=merge 4=link 5=validate 6=select */
+    const char *section;    /* section name if relevant, else ""; see above */
+    char        message[256];
 } AlfResult;
 
 /* ---- Opaque context ---- */

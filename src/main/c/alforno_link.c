@@ -268,7 +268,7 @@ PastaValue *alf_pass4_link(PastaValue *output, AlfContext *ctx,
 
         PastaValue *resolved_sec = resolve_links_value(secval, &lctx);
         if (!resolved_sec) {
-            alf_set_error(result, ALF_ERR_ALLOC, ALF_PASS_LINK, secname, "allocation failed");
+            alf_set_error_at(ctx, result, ALF_ERR_ALLOC, ALF_PASS_LINK, secname, "allocation failed");
             free(order);
             pasta_free(lctx.resolved);
             pasta_free(output);
@@ -283,7 +283,7 @@ PastaValue *alf_pass4_link(PastaValue *output, AlfContext *ctx,
             free(order);
             pasta_free(lctx.resolved);
             pasta_free(output);
-            alf_set_error(result, ALF_ERR_ALLOC, ALF_PASS_LINK, secname, "allocation failed");
+            alf_set_error_at(ctx, result, ALF_ERR_ALLOC, ALF_PASS_LINK, secname, "allocation failed");
             return NULL;
         }
         pasta_free(resolved_sec);
