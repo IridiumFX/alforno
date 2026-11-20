@@ -2870,6 +2870,97 @@ static void test_interpolation_precision(void) {
     SUITE_OK();
 }
 
+/* Pass 4's graph was a static 64 x 64 matrix of 64-byte names: section 65
+   onwards, and any section named with 64+ characters, silently left the
+   output (Vulpes, 2026-11-20).  Now sized from the input. */
+static void test_link_no_section_ceiling(void) {
+    SUITE("Pass 4: no ceiling on section count or name length");
+
+    /* 300 sections; each @sK (K > 1) links its predecessor, and @s1 links
+       the last, so links cross the old 64 boundary both ways. */
+    enum { N = 300 };
+    size_t cap = (size_t)N * 48 + 64;
+    char *src = (char *)malloc(cap), *p = src;
+    if (!src) { ASSERT(0, "alloc"); return; }
+    p += sprintf(p, "@s1 { k: 1, last: s%d }\n", N);
+    for (int i = 2; i <= N; i++) {
+        if (i == N) p += sprintf(p, "@s%d { k: %d }\n", i, i);
+        else        p += sprintf(p, "@s%d { k: %d, prev: s%d }\n", i, i, i - 1);
+    }
+    AlfResult r;
+    AlfContext *ctx = alf_create(ALF_AGGREGATE, &r);
+    if (!ctx) { free(src); ASSERT(0, "create ok"); return; }
+    alf_add_input(ctx, src, strlen(src), &r);
+    PastaValue *out = alf_process(ctx, &r);
+    ASSERT(out && r.code == ALF_OK, "processed");
+    ASSERT(out && pasta_count(out) == N, "every section survives");
+    if (out) {
+        char name[16];
+        snprintf(name, sizeof name, "s%d", N);
+        const PastaValue *lastsec = pasta_map_get(out, name);
+        ASSERT(lastsec && pasta_get_number(pasta_map_get(lastsec, "k")) == N,
+               "the last section is there");
+        const PastaValue *s1 = pasta_map_get(out, "s1");
+        const PastaValue *emb = s1 ? pasta_map_get(s1, "last") : NULL;
+        ASSERT(emb && pasta_type(emb) == PASTA_MAP
+               && pasta_get_number(pasta_map_get(emb, "k")) == N,
+               "a link to a section past 64 resolves");
+        snprintf(name, sizeof name, "s%d", N - 1);
+        const PastaValue *sn = pasta_map_get(out, name);
+        const PastaValue *chain = sn;
+        int depth = 0;           /* s299 -> s298 -> ... -> s1 */
+        while (chain && pasta_map_get(chain, "prev")) {
+            chain = pasta_map_get(chain, "prev");
+            depth++;
+        }
+        ASSERT(depth == N - 2, "a chain across all sections resolves fully");
+    }
+    pasta_free(out);
+    alf_free(ctx);
+    free(src);
+
+    /* A 100-character section name, linked from another section. */
+    {
+        char longname[101];
+        memset(longname, 'n', 100);
+        longname[100] = '\0';
+        char lsrc[400];
+        snprintf(lsrc, sizeof lsrc, "@%s { v: 7 }\n@user { target: %s }",
+                 longname, longname);
+        ctx = alf_create(ALF_AGGREGATE, &r);
+        if (!ctx) { ASSERT(0, "create ok"); return; }
+        alf_add_input(ctx, lsrc, strlen(lsrc), &r);
+        out = alf_process(ctx, &r);
+        ASSERT(out && pasta_count(out) == 2, "long-named section survives");
+        const PastaValue *u = out ? pasta_map_get(out, "user") : NULL;
+        const PastaValue *t = u ? pasta_map_get(u, "target") : NULL;
+        ASSERT(out && pasta_map_get(out, longname), "found by its full name");
+        ASSERT(t && pasta_type(t) == PASTA_MAP
+               && pasta_get_number(pasta_map_get(t, "v")) == 7,
+               "a link to a long name resolves");
+        pasta_free(out);
+        alf_free(ctx);
+    }
+
+    /* A cycle among sections past 64 is still reported. */
+    {
+        char *csrc = (char *)malloc(cap), *q = csrc;
+        if (!csrc) { ASSERT(0, "alloc"); return; }
+        for (int i = 1; i <= 100; i++)
+            q += sprintf(q, "@c%d { k: %d%s }\n", i, i,
+                         i == 90 ? ", to: c99" : i == 99 ? ", to: c90" : "");
+        ctx = alf_create(ALF_AGGREGATE, &r);
+        if (!ctx) { free(csrc); ASSERT(0, "create ok"); return; }
+        alf_add_input(ctx, csrc, strlen(csrc), &r);
+        out = alf_process(ctx, &r);
+        ASSERT(!out && r.code == ALF_ERR_CYCLE, "cycle past 64 reported");
+        pasta_free(out);
+        alf_free(ctx);
+        free(csrc);
+    }
+    SUITE_OK();
+}
+
 static void test_process_to_string(void) {
     SUITE("alf_process_to_string: basic roundtrip");
 
@@ -3156,6 +3247,7 @@ int main(void) {
     test_number_base_survives();
     test_utf8_paths();
     test_interpolation_precision();
+    test_link_no_section_ceiling();
 #if defined(ALF_HAS_EXACT_INTEGERS) || defined(PASTA_HAS_EXACT_INTEGERS)
     test_exact_integers_survive();
 #endif

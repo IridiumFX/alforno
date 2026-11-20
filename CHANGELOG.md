@@ -32,6 +32,43 @@ Current source set (`src/main/c` unless noted):
 
 ## Unreleased
 
+### Link pass: no ceiling on sections or section-name length
+
+**Reported by Vulpes (2026-11-20).** Pass 4 built its link graph in a fixed
+64 × 64 matrix with 64-byte name slots:
+
+- **Section count.** With more than 64 sections in the merged output, it
+  processed the first 64, and every later section was missing from the
+  output. The comment promised "a single pass without topo ordering", but the
+  code did not do that.
+- **Name length.** A section name of 64 or more characters was cut short to
+  fit its slot. The lookup by the shortened name then missed, and that section
+  was dropped too, whatever the count.
+
+Neither case set an error.
+
+The graph is now sized from the output at run time:
+- Section names are the output's own keys, never copied.
+- Links are stored as adjacency lists, so memory follows the links that exist,
+  not N².
+- Name lookup uses a sorted index.
+- The depth-first sort runs on an explicit stack, so a long chain cannot
+  exhaust the C stack.
+
+There is no limit on the number of sections or on name length, apart from
+memory. An allocation failure is reported as `ALF_ERR_ALLOC`.
+
+Nothing changes up to 64 sections. 3000 random documents of up to 64 sections,
+with links, unmatched labels and cycles, give byte-identical output and errors
+before and after.
+
+Test: `test_link_no_section_ceiling`. It uses 300 sections, with links across
+the old boundary both ways, a 298-link chain, a 100-character section name used
+as a link target, and a cycle among sections 90-99. The previous code fails 6 of
+its assertions.
+
+No source files added or removed.
+
 ### Negative zero keeps its sign
 
 `v: -0.0` interpolated into a string came out `"0"`. That spelling reads
